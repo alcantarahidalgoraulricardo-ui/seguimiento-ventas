@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>Seguimiento — Gerente de Ventas</title>
+<meta name="theme-color" content="#2563eb" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Seguimiento" />
+<link rel="icon" href="icons/icon-32.png" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+  body { -webkit-tap-highlight-color: transparent; }
+  .status-done { border-left-color: #16a34a; background: #052e1a; }
+  .status-current { border-left-color: #2563eb; background: #0b1d3a; box-shadow: 0 0 0 1px rgba(37,99,235,.4); }
+  .status-missed { border-left-color: #dc2626; background: #2a0e0e; }
+  .status-upcoming { border-left-color: #4b5563; background: #111827; }
+  .status-break { border-left-color: #a16207; background: #1a1508; opacity: .8; }
+  .tab-active { border-bottom: 2px solid #2563eb; color: #fff; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #374151; border-radius: 999px; }
+  .fade-in { animation: fadeIn .25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform:translateY(0);} }
+</style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+<div id="app" class="max-w-md mx-auto min-h-screen flex flex-col pb-24">
+
+  <!-- ===================== PANTALLA DE LOGIN ===================== -->
+  <div id="auth-screen" class="hidden flex-1 flex flex-col justify-center items-center px-6">
+    <div class="w-full max-w-sm">
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 rounded-2xl bg-blue-600 mx-auto mb-3 flex items-center justify-center text-2xl">🕒</div>
+        <h1 class="text-xl font-semibold">Seguimiento de rutina</h1>
+        <p class="text-gray-400 text-sm mt-1">Gerente de ventas</p>
+      </div>
+      <div class="space-y-3">
+        <input id="auth-email" type="email" placeholder="Correo" autocomplete="email"
+          class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+        <input id="auth-password" type="password" placeholder="Contraseña" autocomplete="current-password"
+          class="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+        <p id="auth-error" class="text-red-400 text-xs hidden"></p>
+        <button id="btn-signin" class="w-full bg-blue-600 hover:bg-blue-500 transition rounded-xl px-4 py-3 text-sm font-medium">Entrar</button>
+        <button id="btn-signup" class="w-full bg-gray-900 border border-gray-800 hover:border-gray-700 transition rounded-xl px-4 py-3 text-sm font-medium">Crear cuenta</button>
+        <p class="text-gray-500 text-xs text-center pt-2">Usa el mismo correo y contraseña en iPhone y Mac para ver los mismos datos.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== APP PRINCIPAL ===================== -->
+  <div id="main-app" class="hidden flex-1 flex flex-col">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-10 bg-gray-950/90 backdrop-blur border-b border-gray-900 px-4 pt-4 pb-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <p id="today-label" class="text-xs text-gray-400 uppercase tracking-wide"></p>
+          <h1 class="text-lg font-semibold" id="today-title">Hoy</h1>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <p class="text-[10px] text-gray-500 uppercase">Puntos hoy</p>
+            <p id="points-today" class="text-lg font-bold text-blue-400 leading-none">0</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[10px] text-gray-500 uppercase">Racha</p>
+            <p id="streak-count" class="text-lg font-bold text-orange-400 leading-none">0🔥</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="flex border-b border-gray-900 px-4 text-sm text-gray-500">
+      <button data-tab="hoy" class="tab-btn tab-active px-3 py-2 font-medium">Hoy</button>
+      <button data-tab="semana" class="tab-btn px-3 py-2 font-medium">Semana</button>
+      <button data-tab="ajustes" class="tab-btn px-3 py-2 font-medium">Ajustes</button>
+    </nav>
+
+    <!-- ============ TAB: HOY ============ -->
+    <section id="tab-hoy" class="tab-panel flex-1 px-4 py-4 space-y-3"></section>
+
+    <!-- ============ TAB: SEMANA ============ -->
+    <section id="tab-semana" class="tab-panel hidden flex-1 px-4 py-4 space-y-4">
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-1">Cumplimiento de la semana</p>
+        <div class="flex items-end justify-between">
+          <p id="week-adherence" class="text-3xl font-bold">—</p>
+          <p id="week-points" class="text-sm text-gray-400">0 pts</p>
+        </div>
+      </div>
+      <div id="week-days" class="space-y-2"></div>
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-2">Leads atendidos (semana)</p>
+        <div class="flex justify-between text-sm">
+          <span id="week-leads-count">0 leads</span>
+          <span id="week-leads-avg" class="text-gray-400">— min promedio</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TAB: AJUSTES ============ -->
+    <section id="tab-ajustes" class="tab-panel hidden flex-1 px-4 py-4 space-y-4">
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-1">Cuenta</p>
+        <p id="settings-email" class="text-sm">—</p>
+        <button id="btn-signout" class="mt-3 text-sm text-red-400">Cerrar sesión</button>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-sm font-medium mb-1">Recordatorios de inicio de bloque</p>
+        <p class="text-xs text-gray-500 mb-3">Te avisa cuando empieza cada bloque de tu rutina (requiere tener la app abierta o en segundo plano; en iPhone abre la app instalada al menos una vez al día para reactivarlos).</p>
+        <button id="btn-notifications" class="w-full bg-blue-600 hover:bg-blue-500 transition rounded-xl px-4 py-3 text-sm font-medium">Activar recordatorios</button>
+        <p id="notif-status" class="text-xs text-gray-500 mt-2"></p>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4 text-xs text-gray-500 leading-relaxed">
+        <p class="font-medium text-gray-400 mb-1">Cómo se ganan puntos</p>
+        <p>+10 por bloque completado · +5 extra si agregas notas o métricas · +25 si completas el día entero · +10 por lead registrado (+10 extra si respondiste en ≤15 min).</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- Botón flotante: registrar lead -->
+  <button id="btn-fab-lead" class="hidden fixed bottom-6 right-1/2 translate-x-[calc(50%-1px)] max-w-md mx-auto bg-orange-500 hover:bg-orange-400 transition text-white rounded-full px-5 py-3 shadow-lg shadow-orange-900/50 text-sm font-semibold flex items-center gap-2 z-20">
+    <span class="text-lg leading-none">⚡</span> Lead atendido
+  </button>
+
+  <!-- Modal registrar lead -->
+  <div id="modal-lead" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in">
+      <h3 class="font-semibold">Registrar lead atendido</h3>
+      <div>
+        <label class="text-xs text-gray-400">Tiempo de respuesta (minutos)</label>
+        <input id="lead-minutes" type="number" min="0" placeholder="Ej. 12"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+      </div>
+      <div>
+        <label class="text-xs text-gray-400">Nota rápida (opcional)</label>
+        <input id="lead-note" type="text" placeholder="Ej. Cliente interesado en cotización"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button id="btn-lead-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Cancelar</button>
+        <button id="btn-lead-save" class="flex-1 bg-orange-500 rounded-xl py-3 text-sm font-medium">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal notas/métricas de bloque -->
+  <div id="modal-block" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in max-h-[85vh] overflow-y-auto">
+      <h3 id="modal-block-title" class="font-semibold">Bloque</h3>
+      <div id="modal-block-metrics" class="space-y-3"></div>
+      <div>
+        <label class="text-xs text-gray-400">Notas</label>
+        <textarea id="modal-block-notes" rows="3" placeholder="¿Qué pasó en este bloque?"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600"></textarea>
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button id="btn-block-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Cerrar</button>
+        <button id="btn-block-save" class="flex-1 bg-blue-600 rounded-xl py-3 text-sm font-medium">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 text-sm px-4 py-2 rounded-full z-40"></div>
+</div>
+
+<script src="firebase-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
