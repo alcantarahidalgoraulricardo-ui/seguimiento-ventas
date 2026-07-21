@@ -22,11 +22,54 @@
   .status-missed { border-left-color: #dc2626; background: #2a0e0e; }
   .status-upcoming { border-left-color: #4b5563; background: #111827; }
   .status-break { border-left-color: #a16207; background: #1a1508; opacity: .8; }
+  .status-blocked { border-left-color: #7c3aed; background: #1e1033; }
   .tab-active { border-bottom: 2px solid #2563eb; color: #fff; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-thumb { background: #374151; border-radius: 999px; }
   .fade-in { animation: fadeIn .25s ease-out; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px);} to { opacity:1; transform:translateY(0);} }
+
+  /* Espacio seguro para el Dynamic Island / notch en iPhone */
+  .safe-top { padding-top: max(1rem, env(safe-area-inset-top)); }
+  .safe-bottom-fab { bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+
+  /* Efecto "maquinaria" al completar un bloque */
+  #fx-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; }
+  .fx-flash { position: absolute; inset: 0;
+    background: radial-gradient(circle at var(--fx-x) var(--fx-y), rgba(251,191,36,0.30), transparent 55%);
+    animation: fxFlash .5s ease-out forwards; }
+  .fx-beam { position: absolute; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, transparent, #9ca3af, #fbbf24, #9ca3af, transparent);
+    box-shadow: 0 0 18px #fbbf24; transform: scaleX(0); animation: fxBeam .5s ease-out forwards; }
+  .fx-gear { position: absolute; font-size: 34px; line-height: 1;
+    transform: translate(-50%,-50%) scale(0) rotate(0deg);
+    filter: drop-shadow(0 0 10px #f59e0b);
+    animation: fxGear .8s cubic-bezier(.2,.8,.3,1) forwards; }
+  .fx-gear.small { font-size: 20px; animation-name: fxGearCounter; }
+  .fx-spark { position: absolute; width: 10px; height: 3px; border-radius: 2px;
+    background: linear-gradient(90deg, #fbbf24, #f97316);
+    box-shadow: 0 0 6px #f59e0b; animation: fxSpark .7s ease-out forwards; }
+  .fx-shake { animation: fxShake .35s ease-in-out; }
+  @keyframes fxFlash { from { opacity: 1; } to { opacity: 0; } }
+  @keyframes fxBeam {
+    0% { transform: scaleX(0); opacity: 1; }
+    60% { transform: scaleX(1); opacity: 1; }
+    100% { transform: scaleX(1); opacity: 0; } }
+  @keyframes fxGear {
+    0% { transform: translate(-50%,-50%) scale(0) rotate(0deg); opacity: 1; }
+    60% { transform: translate(-50%,-50%) scale(1.15) rotate(200deg); opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(0.9) rotate(280deg); opacity: 0; } }
+  @keyframes fxGearCounter {
+    0% { transform: translate(-50%,-50%) scale(0) rotate(0deg); opacity: 1; }
+    60% { transform: translate(-50%,-50%) scale(1.1) rotate(-160deg); opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(0.85) rotate(-240deg); opacity: 0; } }
+  @keyframes fxSpark { to { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; } }
+  @keyframes fxShake {
+    0%, 100% { transform: translate(0,0); }
+    20% { transform: translate(-2px,1px); }
+    40% { transform: translate(2px,-1px); }
+    60% { transform: translate(-1px,2px); }
+    80% { transform: translate(1px,-2px); } }
 </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
@@ -58,7 +101,7 @@
   <div id="main-app" class="hidden flex-1 flex flex-col">
 
     <!-- Header -->
-    <header class="sticky top-0 z-10 bg-gray-950/90 backdrop-blur border-b border-gray-900 px-4 pt-4 pb-3">
+    <header class="safe-top sticky top-0 z-10 bg-gray-950/90 backdrop-blur border-b border-gray-900 px-4 pb-3">
       <div class="flex items-center justify-between">
         <div>
           <p id="today-label" class="text-xs text-gray-400 uppercase tracking-wide"></p>
@@ -121,13 +164,13 @@
       </div>
       <div class="bg-gray-900 rounded-xl p-4 text-xs text-gray-500 leading-relaxed">
         <p class="font-medium text-gray-400 mb-1">Cómo se ganan puntos</p>
-        <p>+10 por bloque completado · +5 extra si agregas notas o métricas · +25 si completas el día entero · +10 por lead registrado (+10 extra si respondiste en ≤15 min).</p>
+        <p>+10 por bloque completado · +5 extra si agregas notas o métricas · +25 si completas el día entero · +10 por lead registrado (+10 extra si respondiste en ≤15 min) · +5 por cada bloqueo de horario que justifiques al desbloquear. Los bloques que caen dentro de un bloqueo justificado no cuentan como pendientes ni rompen tu racha.</p>
       </div>
     </section>
   </div>
 
   <!-- Botón flotante: registrar lead -->
-  <button id="btn-fab-lead" class="hidden fixed bottom-6 right-1/2 translate-x-[calc(50%-1px)] max-w-md mx-auto bg-orange-500 hover:bg-orange-400 transition text-white rounded-full px-5 py-3 shadow-lg shadow-orange-900/50 text-sm font-semibold flex items-center gap-2 z-20">
+  <button id="btn-fab-lead" class="safe-bottom-fab hidden fixed right-1/2 translate-x-[calc(50%-1px)] max-w-md mx-auto bg-orange-500 hover:bg-orange-400 transition text-white rounded-full px-5 py-3 shadow-lg shadow-orange-900/50 text-sm font-semibold flex items-center gap-2 z-20">
     <span class="text-lg leading-none">⚡</span> Lead atendido
   </button>
 
@@ -169,7 +212,59 @@
     </div>
   </div>
 
+  <!-- Modal: bloquear horario -->
+  <div id="modal-lock-start" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in">
+      <h3 class="font-semibold">Bloquear horario</h3>
+      <p class="text-xs text-gray-500">Para salidas con clientes o imprevistos no calendarizados.</p>
+      <div>
+        <label class="text-xs text-gray-400">Motivo del bloqueo</label>
+        <input id="lock-reason-input" type="text" placeholder="Ej. Visita a cliente Fulano"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-violet-600" />
+      </div>
+      <p id="lock-reason-error" class="text-red-400 text-xs hidden">Escribe un motivo para bloquear.</p>
+      <div class="flex gap-3 pt-1">
+        <button id="btn-lock-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Cancelar</button>
+        <button id="btn-lock-confirm" class="flex-1 bg-violet-600 rounded-xl py-3 text-sm font-medium">Bloquear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: desbloquear horario -->
+  <div id="modal-lock-end" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in">
+      <h3 class="font-semibold">Desbloquear horario</h3>
+      <p class="text-xs text-gray-500">Motivo original: <span id="lock-end-reason" class="text-gray-300"></span></p>
+      <p class="text-xs text-gray-500">Duración: <span id="lock-end-duration" class="text-gray-300"></span></p>
+      <div>
+        <label class="text-xs text-gray-400">¿Qué actividad realizaste durante este tiempo?</label>
+        <textarea id="lock-justification" rows="3" placeholder="Ej. Reunión con cliente, se acordó..."
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-violet-600"></textarea>
+      </div>
+      <p id="lock-justification-error" class="text-red-400 text-xs hidden">Escribe qué hiciste antes de desbloquear.</p>
+      <div class="flex gap-3 pt-1">
+        <button id="btn-lock-end-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Seguir bloqueado</button>
+        <button id="btn-lock-end-confirm" class="flex-1 bg-violet-600 rounded-xl py-3 text-sm font-medium">Desbloquear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal detalle de un día (tab Semana) -->
+  <div id="modal-day-detail" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-3 fade-in max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 id="day-detail-title" class="font-semibold">Día</h3>
+        <span id="day-detail-points" class="text-sm text-blue-400"></span>
+      </div>
+      <div id="day-detail-list" class="space-y-2"></div>
+      <button id="btn-day-detail-close" class="w-full bg-gray-800 rounded-xl py-3 text-sm mt-2">Cerrar</button>
+    </div>
+  </div>
+
   <div id="toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 text-sm px-4 py-2 rounded-full z-40"></div>
+
+  <!-- Overlay de efectos al completar un bloque -->
+  <div id="fx-overlay"></div>
 </div>
 
 <script src="firebase-config.js"></script>

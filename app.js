@@ -4,29 +4,29 @@
 
 // ---------- 1. Definición de la rutina (bloques del día) ----------
 const BLOCKS_WEEKDAY = [
-  { id: "reporte",     label: "Reporte diario CRM",              start: "10:00", end: "10:20" },
-  { id: "reactivacion",label: "Reactivación de clientes",         start: "10:20", end: "11:50",
-    metrics: [{ key: "llamadas", label: "# Llamadas de reactivación", type: "number" }] },
-  { id: "crm_embudo",  label: "Seguimientos CRM + Embudo",        start: "11:50", end: "14:00",
+  { id: "pendientes_crm", label: "PENDIENTES CRM",                start: "10:00", end: "12:00" },
+  { id: "embudo",      label: "Revisión de embudo",               start: "12:00", end: "12:30",
     metrics: [{ key: "leads_revisados", label: "# Leads revisados", type: "number" }] },
+  { id: "reactivacion",label: "Reactivación de clientes",         start: "12:30", end: "14:00",
+    metrics: [{ key: "llamadas", label: "# Llamadas de reactivación", type: "number" }] },
   { id: "comida",      label: "Comida",                           start: "14:00", end: "15:00", isBreak: true },
-  { id: "cambaceo",    label: "Cambaceo / Prospección",           start: "15:00", end: "16:00",
+  { id: "cambaceo",    label: "Cambaceo / Prospección",           start: "15:00", end: "15:45",
     metrics: [{ key: "llamadas_cambaceo", label: "# Llamadas de cambaceo", type: "number" }] },
-  { id: "mapeo_ia",    label: "Mapeo de empresas con IA",         start: "16:00", end: "17:00",
+  { id: "mapeo_ia",    label: "Mapeo de empresas con IA",         start: "15:45", end: "16:30",
     metrics: [{ key: "empresas_mapeadas", label: "# Empresas mapeadas", type: "number" }] },
-  { id: "metricas",    label: "Revisión de métricas",             start: "17:00", end: "17:30" },
-  { id: "asesoria",    label: "Asesoría a vendedores",            start: "17:30", end: "18:00" },
+  { id: "metricas",    label: "Revisión de métricas",             start: "16:30", end: "17:00" },
+  { id: "reporte",     label: "Reporte diario CRM",               start: "17:00", end: "17:20" },
+  { id: "asesoria",    label: "Coaching a vendedores",            start: "17:20", end: "18:00" },
 ];
 
 const BLOCKS_FRIDAY = [
-  { id: "reporte",     label: "Reporte diario CRM",              start: "10:00", end: "10:20" },
-  { id: "reactivacion",label: "Reactivación de clientes",         start: "10:20", end: "11:50",
-    metrics: [{ key: "llamadas", label: "# Llamadas de reactivación", type: "number" }] },
-  { id: "crm_embudo",  label: "Seguimientos CRM + Embudo",        start: "11:50", end: "14:00",
+  { id: "pendientes_crm", label: "PENDIENTES CRM",                start: "10:00", end: "12:00" },
+  { id: "embudo",      label: "Revisión de embudo",               start: "12:00", end: "12:30",
     metrics: [{ key: "leads_revisados", label: "# Leads revisados", type: "number" }] },
+  { id: "junta_prep",  label: "Preparación de junta",             start: "12:30", end: "14:00" },
   { id: "comida",      label: "Comida",                           start: "14:00", end: "15:00", isBreak: true },
-  { id: "junta_metricas", label: "Junta: revisión de métricas",   start: "15:00", end: "15:30" },
-  { id: "junta",       label: "Junta de equipo",                  start: "15:30", end: "18:00" },
+  { id: "junta",       label: "Junta: reporte CRM con vendedores + métricas de reactivación y recompra",
+    start: "15:00", end: "18:00" },
 ];
 
 const DIAS_ES = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
@@ -44,6 +44,34 @@ function dateStr(d) {
 }
 function minutesNow(d) { return d.getHours() * 60 + d.getMinutes(); }
 function toMinutes(hhmm) { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; }
+function minutesFromTimestamp(ts) { const d = new Date(ts); return d.getHours() * 60 + d.getMinutes(); }
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function formatDuration(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// ¿Este bloque cae dentro de un bloqueo de horario (activo o ya justificado) de ese día?
+function isBlockExcused(b, data) {
+  if (!data || !data.locks || !data.locks.length) return false;
+  const s = toMinutes(b.start), e = toMinutes(b.end);
+  return data.locks.some((lock) => {
+    const lockStartMin = minutesFromTimestamp(lock.start);
+    const lockEndMin = lock.end ? minutesFromTimestamp(lock.end) : 24 * 60; // si sigue abierto, cubre hasta el final del día
+    return s < lockEndMin && e > lockStartMin;
+  });
+}
+
+function getActiveLock(data) {
+  if (!data || !data.locks || !data.locks.length) return null;
+  const last = data.locks[data.locks.length - 1];
+  return last && last.end == null ? last : null;
+}
 
 // ---------- 2. Firebase ----------
 let auth, db, currentUser = null;
@@ -62,6 +90,7 @@ let todayData = { blocks: {}, leadLogs: [] };
 let todayUnsub = null;
 let activeTab = "hoy";
 let editingBlockId = null;
+let weekCache = {}; // dateStr -> { date, type, blocks, data, points }
 
 // ---------- 4. Utilidades UI ----------
 function $(sel) { return document.querySelector(sel); }
@@ -163,6 +192,8 @@ function computeDayPoints(data, blocks) {
       const hasNotes = bd.notes && bd.notes.trim().length > 0;
       const hasMetrics = bd.metrics && Object.values(bd.metrics).some((v) => v !== "" && v !== null && v !== undefined);
       if (hasNotes || hasMetrics) points += 5;
+    } else if (isBlockExcused(b, data)) {
+      // cae dentro de un bloqueo de horario: no cuenta en contra ni rompe la racha
     } else {
       allDone = false;
     }
@@ -172,19 +203,37 @@ function computeDayPoints(data, blocks) {
     points += 10;
     if (typeof l.minutes === "number" && l.minutes <= 15) points += 10;
   });
+  (data.locks || []).forEach((l) => {
+    if (l.end && l.justification && l.justification.trim()) points += 5;
+  });
   return { points, allDone };
 }
 
 // ---------- 8. Render tab Hoy ----------
-function blockStatus(b, bd, nowMin) {
+function blockStatus(b, bd, nowMin, data) {
   if (b.isBreak) return "break";
   if (bd && bd.completed) return "done";
+  if (isBlockExcused(b, data)) return "blocked";
   const s = toMinutes(b.start), e = toMinutes(b.end);
   if (nowMin < s) return "upcoming";
   if (nowMin >= s && nowMin <= e) return "current";
   return "missed";
 }
-const STATUS_LABEL = { done: "Completado", current: "En curso", missed: "Pendiente (venció)", upcoming: "Próximo", break: "Descanso" };
+const STATUS_LABEL = { done: "Completado", current: "En curso", missed: "Pendiente (venció)", upcoming: "Próximo", break: "Descanso", blocked: "Bloqueado (justificado)" };
+
+// Estado de un bloque para un día que no necesariamente es hoy (usado en el detalle semanal)
+function historicalStatus(b, bd, date, data) {
+  if (b.isBreak) return "break";
+  if (bd && bd.completed) return "done";
+  if (isBlockExcused(b, data)) return "blocked";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cmp = new Date(date);
+  cmp.setHours(0, 0, 0, 0);
+  if (cmp.getTime() === today.getTime()) return blockStatus(b, bd, minutesNow(new Date()), data);
+  if (cmp.getTime() > today.getTime()) return "upcoming";
+  return "missed";
+}
 
 function renderToday() {
   const now = new Date();
@@ -199,12 +248,41 @@ function renderToday() {
   if (type === "weekend") {
     container.innerHTML = `<div class="text-center text-gray-500 text-sm py-16">Hoy no tienes bloques programados. Buen descanso. 🙌</div>`;
     $("#points-today").textContent = "0";
+    clearInterval(lockTimerInterval);
     return;
+  }
+
+  // Botón / banner de bloqueo de horario
+  const activeLock = getActiveLock(todayData);
+  const lockBox = document.createElement("div");
+  if (activeLock) {
+    lockBox.className = "bg-violet-950/60 border border-violet-700 rounded-xl p-3 flex items-center justify-between gap-2 fade-in";
+    lockBox.innerHTML = `
+      <div>
+        <p class="text-sm font-medium text-violet-200">🔒 ${escapeHtml(activeLock.reason || "Sin motivo")}</p>
+        <p class="text-[11px] text-violet-400" id="lock-timer">00:00</p>
+      </div>
+      <button id="btn-unlock" class="bg-violet-600 hover:bg-violet-500 transition rounded-xl px-4 py-2 text-xs font-medium shrink-0">Desbloquear</button>
+    `;
+  } else {
+    clearInterval(lockTimerInterval);
+    lockBox.innerHTML = `
+      <button id="btn-lock-start" class="w-full bg-gray-900 border border-gray-800 hover:border-violet-700 transition rounded-xl px-4 py-2.5 text-xs font-medium text-gray-400 flex items-center justify-center gap-2">
+        🔒 Bloquear horario (salida con cliente / imprevisto)
+      </button>
+    `;
+  }
+  container.appendChild(lockBox);
+  if (activeLock) {
+    startLockTimer(activeLock.start);
+    $("#btn-unlock").addEventListener("click", openUnlockModal);
+  } else {
+    $("#btn-lock-start").addEventListener("click", openLockModal);
   }
 
   blocks.forEach((b) => {
     const bd = (todayData.blocks && todayData.blocks[b.id]) || {};
-    const status = blockStatus(b, bd, nowMin);
+    const status = blockStatus(b, bd, nowMin, todayData);
     const card = document.createElement("div");
     card.className = `status-${status} border-l-4 rounded-xl p-3 flex items-start gap-3 fade-in`;
 
@@ -230,7 +308,7 @@ function renderToday() {
   });
 
   container.querySelectorAll("[data-toggle]").forEach((el) =>
-    el.addEventListener("click", () => toggleBlock(el.dataset.toggle, blocks))
+    el.addEventListener("click", (e) => toggleBlock(el.dataset.toggle, blocks, e))
   );
   container.querySelectorAll("[data-open]").forEach((el) =>
     el.addEventListener("click", () => openBlockModal(el.dataset.open, blocks))
@@ -240,7 +318,59 @@ function renderToday() {
   $("#points-today").textContent = points;
 }
 
-function toggleBlock(blockId, blocks) {
+// ---------- Bloqueo de horario (salidas / imprevistos) ----------
+let lockTimerInterval = null;
+
+function startLockTimer(startTs) {
+  clearInterval(lockTimerInterval);
+  const update = () => {
+    const el = document.getElementById("lock-timer");
+    if (!el) { clearInterval(lockTimerInterval); return; }
+    el.textContent = formatDuration(Date.now() - startTs);
+  };
+  update();
+  lockTimerInterval = setInterval(update, 1000);
+}
+
+function openLockModal() {
+  $("#lock-reason-input").value = "";
+  $("#lock-reason-error").classList.add("hidden");
+  $("#modal-lock-start").classList.remove("hidden");
+}
+$("#btn-lock-cancel").addEventListener("click", () => $("#modal-lock-start").classList.add("hidden"));
+$("#btn-lock-confirm").addEventListener("click", () => {
+  const reason = $("#lock-reason-input").value.trim();
+  if (!reason) { $("#lock-reason-error").classList.remove("hidden"); return; }
+  const locks = [...(todayData.locks || []), { start: Date.now(), end: null, reason, justification: null }];
+  saveToday({ locks });
+  $("#modal-lock-start").classList.add("hidden");
+  showToast("Horario bloqueado");
+});
+
+function openUnlockModal() {
+  const lock = getActiveLock(todayData);
+  if (!lock) return;
+  $("#lock-end-reason").textContent = lock.reason || "—";
+  $("#lock-end-duration").textContent = formatDuration(Date.now() - lock.start);
+  $("#lock-justification").value = "";
+  $("#lock-justification-error").classList.add("hidden");
+  $("#modal-lock-end").classList.remove("hidden");
+}
+$("#btn-lock-end-cancel").addEventListener("click", () => $("#modal-lock-end").classList.add("hidden"));
+$("#btn-lock-end-confirm").addEventListener("click", () => {
+  const justification = $("#lock-justification").value.trim();
+  if (!justification) { $("#lock-justification-error").classList.remove("hidden"); return; }
+  const locks = [...(todayData.locks || [])];
+  const idx = locks.length - 1;
+  if (idx < 0) return;
+  locks[idx] = { ...locks[idx], end: Date.now(), justification };
+  saveToday({ locks });
+  clearInterval(lockTimerInterval);
+  $("#modal-lock-end").classList.add("hidden");
+  showToast("Horario desbloqueado");
+});
+
+function toggleBlock(blockId, blocks, evt) {
   const b = blocks.find((x) => x.id === blockId);
   if (!b || b.isBreak) return;
   const current = (todayData.blocks && todayData.blocks[blockId]) || {};
@@ -249,6 +379,111 @@ function toggleBlock(blockId, blocks) {
     blocks: { ...(todayData.blocks || {}), [blockId]: { ...current, completed, completedAt: completed ? Date.now() : null } },
   };
   saveToday(update);
+  if (completed) {
+    const x = evt && typeof evt.clientX === "number" && evt.clientX ? evt.clientX : window.innerWidth / 2;
+    const y = evt && typeof evt.clientY === "number" && evt.clientY ? evt.clientY : window.innerHeight / 2;
+    triggerCompletionFX(x, y);
+    playFxSound();
+  }
+}
+
+// ---------- FX: efecto tipo maquinaria al completar un bloque ----------
+function triggerCompletionFX(x, y) {
+  const overlay = $("#fx-overlay");
+  if (!overlay) return;
+  overlay.innerHTML = "";
+  overlay.style.setProperty("--fx-x", x + "px");
+  overlay.style.setProperty("--fx-y", y + "px");
+
+  const flash = document.createElement("div");
+  flash.className = "fx-flash";
+  overlay.appendChild(flash);
+
+  const beam = document.createElement("div");
+  beam.className = "fx-beam";
+  beam.style.top = y + "px";
+  overlay.appendChild(beam);
+
+  const gearBig = document.createElement("div");
+  gearBig.className = "fx-gear";
+  gearBig.textContent = "⚙️";
+  gearBig.style.left = x + "px";
+  gearBig.style.top = y + "px";
+  overlay.appendChild(gearBig);
+
+  const gearSmall = document.createElement("div");
+  gearSmall.className = "fx-gear small";
+  gearSmall.textContent = "⚙️";
+  gearSmall.style.left = (x + 22) + "px";
+  gearSmall.style.top = (y - 18) + "px";
+  overlay.appendChild(gearSmall);
+
+  const N = 12;
+  for (let i = 0; i < N; i++) {
+    const s = document.createElement("div");
+    s.className = "fx-spark";
+    const angle = (Math.PI * 2 * i) / N + Math.random() * 0.3;
+    const dist = 50 + Math.random() * 70;
+    s.style.left = x + "px";
+    s.style.top = y + "px";
+    s.style.setProperty("--dx", Math.cos(angle) * dist + "px");
+    s.style.setProperty("--dy", Math.sin(angle) * dist + 20 + "px"); // ligera caída, como chispas
+    s.style.setProperty("--rot", (angle * 180) / Math.PI + 90 + "deg");
+    overlay.appendChild(s);
+  }
+
+  const appEl = document.getElementById("app");
+  if (appEl) {
+    appEl.classList.remove("fx-shake");
+    void appEl.offsetWidth; // reinicia la animación aunque se dispare seguido
+    appEl.classList.add("fx-shake");
+  }
+
+  clearTimeout(triggerCompletionFX._t);
+  triggerCompletionFX._t = setTimeout(() => { overlay.innerHTML = ""; }, 900);
+}
+
+function playFxSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+
+    // Golpe grave, como una prensa/pistón industrial
+    const thump = ctx.createOscillator();
+    const thumpGain = ctx.createGain();
+    thump.type = "sine";
+    thump.frequency.setValueAtTime(160, now);
+    thump.frequency.exponentialRampToValueAtTime(45, now + 0.18);
+    thumpGain.gain.setValueAtTime(0.0001, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.5, now + 0.01);
+    thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    thump.connect(thumpGain);
+    thumpGain.connect(ctx.destination);
+    thump.start(now);
+    thump.stop(now + 0.24);
+
+    // "Clank" metálico (ruido filtrado, como una pieza de metal)
+    const bufferSize = Math.floor(ctx.sampleRate * 0.08);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const bandpass = ctx.createBiquadFilter();
+    bandpass.type = "bandpass";
+    bandpass.frequency.value = 2600;
+    bandpass.Q.value = 4;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.25, now + 0.005);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    noise.connect(bandpass);
+    bandpass.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now + 0.02);
+
+    setTimeout(() => ctx.close(), 500);
+  } catch (e) { /* audio no disponible, se ignora */ }
 }
 
 function openBlockModal(blockId, blocks) {
@@ -356,16 +591,18 @@ async function renderWeekTab() {
   const results = await Promise.all(
     days.map(async (d) => {
       const { type, blocks } = getBlocksForDate(d);
+      let data = { blocks: {}, leadLogs: [] };
       try {
         const snap = await dayDocRef(d).get();
-        const data = snap.exists ? snap.data() : { blocks: {}, leadLogs: [] };
-        const realBlocks = blocks.filter((b) => !b.isBreak);
-        const doneCount = realBlocks.filter((b) => data.blocks && data.blocks[b.id] && data.blocks[b.id].completed).length;
-        const { points } = computeDayPoints(data, blocks);
-        return { date: d, type, total: realBlocks.length, done: doneCount, points, leadLogs: data.leadLogs || [] };
-      } catch (e) {
-        return { date: d, type, total: blocks.filter((b) => !b.isBreak).length, done: 0, points: 0, leadLogs: [] };
-      }
+        if (snap.exists) data = snap.data();
+      } catch (e) { /* si falla la lectura, se queda el día vacío */ }
+      if (!data.blocks) data.blocks = {};
+      if (!data.leadLogs) data.leadLogs = [];
+      const realBlocks = blocks.filter((b) => !b.isBreak);
+      const doneCount = realBlocks.filter((b) => data.blocks[b.id] && data.blocks[b.id].completed).length;
+      const { points } = computeDayPoints(data, blocks);
+      weekCache[dateStr(d)] = { date: d, type, blocks, data, points };
+      return { date: d, type, total: realBlocks.length, done: doneCount, points, leadLogs: data.leadLogs };
     })
   );
 
@@ -377,7 +614,8 @@ async function renderWeekTab() {
     const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
     const isToday = dateStr(r.date) === dateStr(new Date());
     const row = document.createElement("div");
-    row.className = `flex items-center justify-between bg-gray-900 rounded-xl p-3 ${isToday ? "ring-1 ring-blue-600" : ""}`;
+    row.className = `flex items-center justify-between bg-gray-900 rounded-xl p-3 cursor-pointer active:bg-gray-800 transition ${isToday ? "ring-1 ring-blue-600" : ""}`;
+    row.dataset.date = dateStr(r.date);
     row.innerHTML = `
       <div>
         <p class="text-sm font-medium">${DIAS_ES[r.date.getDay()]}</p>
@@ -389,8 +627,10 @@ async function renderWeekTab() {
         </div>
         <span class="text-xs text-gray-400 w-10 text-right">${pct}%</span>
         <span class="text-xs text-blue-400 w-14 text-right">${r.points} pts</span>
+        <span class="text-gray-600 text-xs">›</span>
       </div>
     `;
+    row.addEventListener("click", () => openDayDetail(row.dataset.date));
     wrap.appendChild(row);
   });
 
@@ -401,6 +641,74 @@ async function renderWeekTab() {
   const avg = allLeads.length ? (allLeads.reduce((a, l) => a + (l.minutes || 0), 0) / allLeads.length).toFixed(1) : "—";
   $("#week-leads-avg").textContent = allLeads.length ? `${avg} min promedio de respuesta` : "— min promedio";
 }
+
+// ---------- Detalle de un día (al tocar una fila en Semana) ----------
+function openDayDetail(ds) {
+  const entry = weekCache[ds];
+  if (!entry) return;
+  renderDayDetailModal(entry);
+  $("#modal-day-detail").classList.remove("hidden");
+}
+
+function renderDayDetailModal(entry) {
+  const { date, type, blocks, data, points } = entry;
+  $("#day-detail-title").textContent = `${DIAS_ES[date.getDay()]} · ${dateStr(date)}`;
+  $("#day-detail-points").textContent = `${points} pts`;
+
+  const list = $("#day-detail-list");
+  list.innerHTML = "";
+
+  if (type === "weekend" || blocks.length === 0) {
+    list.innerHTML = `<p class="text-sm text-gray-500 text-center py-6">Sin bloques programados ese día.</p>`;
+    return;
+  }
+
+  blocks.forEach((b) => {
+    const bd = (data.blocks && data.blocks[b.id]) || {};
+    const status = historicalStatus(b, bd, date, data);
+    const metricSummary = b.metrics && bd.metrics
+      ? b.metrics.map((m) => (bd.metrics[m.key] ? `${m.label.replace(/^# /, "")}: ${bd.metrics[m.key]}` : null)).filter(Boolean).join(" · ")
+      : "";
+    const row = document.createElement("div");
+    row.className = `status-${status} border-l-4 rounded-xl p-3`;
+    row.innerHTML = `
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-sm font-medium ${b.isBreak ? "text-gray-400" : ""}">
+          ${status === "done" ? "✓ " : status === "missed" ? "✕ " : ""}${escapeHtml(b.label)}
+        </p>
+        <span class="text-[10px] text-gray-500 shrink-0">${b.start}–${b.end}</span>
+      </div>
+      <p class="text-[11px] text-gray-500 mt-0.5">${STATUS_LABEL[status]}</p>
+      ${metricSummary ? `<p class="text-[11px] text-blue-400 mt-0.5">${escapeHtml(metricSummary)}</p>` : ""}
+      ${bd.notes ? `<p class="text-[11px] text-gray-400 mt-0.5 italic">"${escapeHtml(bd.notes)}"</p>` : ""}
+    `;
+    list.appendChild(row);
+  });
+
+  if (data.locks && data.locks.length) {
+    const lockHeader = document.createElement("p");
+    lockHeader.className = "text-xs text-gray-400 uppercase pt-2";
+    lockHeader.textContent = "Bloqueos de horario";
+    list.appendChild(lockHeader);
+    data.locks.forEach((l) => {
+      const dur = l.end ? formatDuration(l.end - l.start) : "en curso";
+      const row = document.createElement("div");
+      row.className = "border-l-4 border-violet-600 bg-violet-950/40 rounded-xl p-3";
+      row.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-sm font-medium text-violet-200">🔒 ${escapeHtml(l.reason || "Sin motivo")}</p>
+          <span class="text-[10px] text-gray-500 shrink-0">${dur}</span>
+        </div>
+        ${l.justification
+          ? `<p class="text-[11px] text-gray-400 mt-1 italic">"${escapeHtml(l.justification)}"</p>`
+          : `<p class="text-[11px] text-red-400 mt-1">Sin justificar todavía</p>`}
+      `;
+      list.appendChild(row);
+    });
+  }
+}
+
+$("#btn-day-detail-close").addEventListener("click", () => $("#modal-day-detail").classList.add("hidden"));
 
 // ---------- 12. Tabs ----------
 $all(".tab-btn").forEach((btn) => {

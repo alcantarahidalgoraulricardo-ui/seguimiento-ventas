@@ -1,4 +1,4 @@
-const CACHE_NAME = "seguimiento-v1";
+const CACHE_NAME = "seguimiento-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -25,14 +25,22 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Cache-first para el shell de la app, red directa para Firebase (datos en vivo)
+// Red primero (para que siempre veas la versión más nueva), y solo usa la
+// copia guardada si no hay internet. Así evitamos que quede pegada una
+// versión vieja cuando actualicemos la app.
 self.addEventListener("fetch", (event) => {
   const url = event.request.url;
   if (url.includes("firestore") || url.includes("googleapis") || url.includes("identitytoolkit")) {
     return; // deja pasar directo a la red, no cachear datos ni auth
   }
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request).catch(() => cached))
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 

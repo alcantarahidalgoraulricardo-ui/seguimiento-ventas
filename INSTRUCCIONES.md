@@ -114,6 +114,24 @@ Si más adelante quieres notificaciones push de verdad (que lleguen aunque
 la app esté cerrada), se puede agregar con Firebase Cloud Messaging — es un
 paso extra de configuración que podemos hacer después.
 
+## Previsualizar cambios antes de subir a GitHub
+
+Cada vez que edites algo (o yo te haga cambios), puedes verla funcionando en
+tu Mac antes de publicarla:
+
+1. Abre la app **Terminal** (Cmd+Espacio → escribe "Terminal" → Enter).
+2. Escribe esto y presiona Enter:
+   ```
+   cd ~/Desktop/"APP DE SEGUIMIENTO GERENCIA" && python3 -m http.server 8000
+   ```
+3. Abre Safari o Chrome y ve a **http://localhost:8000**
+4. Pruébala igual que en tu iPhone (el login y los datos funcionan porque
+   Firebase permite `localhost` por defecto).
+5. Cuando termines de probar, vuelve a la Terminal y presiona **Ctrl+C**
+   para apagar el servidor.
+
+Si algo no se ve bien ahí, dímelo antes de subir los archivos a GitHub.
+
 ## Si algo no funciona
 
 - Pantalla en blanco o error de login → revisa que copiaste bien los valores
