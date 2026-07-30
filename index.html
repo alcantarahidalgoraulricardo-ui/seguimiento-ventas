@@ -15,6 +15,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   body { -webkit-tap-highlight-color: transparent; }
   .status-done { border-left-color: #16a34a; background: #052e1a; }
@@ -70,9 +71,72 @@
     40% { transform: translate(2px,-1px); }
     60% { transform: translate(-1px,2px); }
     80% { transform: translate(1px,-2px); } }
+
+  /* ---- Tema claro (activado con body.light) ---- */
+  body.light { background:#f8fafc; color:#0f172a !important; }
+  body.light .bg-gray-950 { background-color:#f8fafc !important; }
+  body.light .bg-gray-950\/90 { background-color:rgba(248,250,252,.9) !important; }
+  body.light .bg-gray-900 { background-color:#ffffff !important; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  body.light .bg-gray-800 { background-color:#f1f5f9 !important; }
+  body.light .bg-gray-700\/50 { background-color:rgba(203,213,225,.7) !important; }
+  body.light .border-gray-900 { border-color:#e2e8f0 !important; }
+  body.light .border-gray-800 { border-color:#e2e8f0 !important; }
+  body.light .border-gray-700 { border-color:#cbd5e1 !important; }
+  body.light .text-gray-100 { color:#0f172a !important; }
+  body.light .text-gray-400 { color:#64748b !important; }
+  body.light .text-gray-500 { color:#64748b !important; }
+  body.light .text-gray-600 { color:#94a3b8 !important; }
+  body.light ::-webkit-scrollbar-thumb { background:#cbd5e1; }
+  body.light .tab-active { color:#1d4ed8 !important; }
+  /* colores de bloque más notables (saturados) en tema claro */
+  body.light .status-done { background:#bbf7d0; border-left-color:#16a34a; }
+  body.light .status-current { background:#bfdbfe; border-left-color:#2563eb; }
+  body.light .status-missed { background:#fecaca; border-left-color:#dc2626; }
+  body.light .status-upcoming { background:#e2e8f0; border-left-color:#64748b; }
+  body.light .status-break { background:#fde68a; border-left-color:#a16207; }
+  body.light .status-blocked { background:#ddd6fe; border-left-color:#7c3aed; }
+  body.light .bg-violet-950\/60 { background-color:#ede9fe !important; }
+  body.light .bg-violet-950\/40 { background-color:#ede9fe !important; }
+  body.light .text-violet-200 { color:#5b21b6 !important; }
+  body.light .text-violet-400 { color:#7c3aed !important; }
+
+  /* ---- Splash de apertura (estilo "maquinaria") ---- */
+  #splash { position:fixed; inset:0; z-index:100; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:14px; overflow:hidden;
+    background: radial-gradient(circle at 50% 40%, #16233f 0%, #0f172a 60%, #0a0f1e 100%);
+    transition:opacity .5s ease; }
+  #splash.hide { opacity:0; pointer-events:none; }
+  body.light #splash { background: radial-gradient(circle at 50% 40%, #ffffff 0%, #eef2f7 60%, #e2e8f0 100%); }
+
+  #splash-stage { position:relative; width:240px; height:240px; display:flex; align-items:center; justify-content:center; }
+  #splash-video { width:100%; height:100%; object-fit:contain;
+    animation: splashGifIn .5s cubic-bezier(.2,.8,.3,1) both; }
+  @keyframes splashGifIn { 0% { transform:scale(.85); opacity:0; } 100% { transform:scale(1); opacity:1; } }
+
+  #splash-title { font-size:15px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+    color:#e2e8f0; opacity:0; animation:splashTextIn .5s ease-out .35s forwards; }
+  body.light #splash-title { color:#0f172a; }
+  #splash-subtitle { font-size:11px; color:#64748b; opacity:0; animation:splashTextIn .5s ease-out .5s forwards; }
+  @keyframes splashTextIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+<script>
+  (function () {
+    try { if (localStorage.getItem("theme") === "light") document.body.classList.add("light"); } catch (e) {}
+  })();
+</script>
+
+<!-- Splash de apertura -->
+<div id="splash">
+  <div id="splash-stage">
+    <video id="splash-video" autoplay muted playsinline webkit-playsinline="true" disablepictureinpicture>
+      <source src="icons/splash-intro-v2.mp4" type="video/mp4" />
+    </video>
+  </div>
+  <h2 id="splash-title">Seguimiento</h2>
+  <p id="splash-subtitle">Gerente de ventas</p>
+</div>
 
 <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col pb-24">
 
@@ -123,9 +187,50 @@
     <!-- Tabs -->
     <nav class="flex border-b border-gray-900 px-4 text-sm text-gray-500">
       <button data-tab="hoy" class="tab-btn tab-active px-3 py-2 font-medium">Hoy</button>
+      <button data-tab="leads" class="tab-btn px-3 py-2 font-medium">Leads</button>
       <button data-tab="semana" class="tab-btn px-3 py-2 font-medium">Semana</button>
+      <button data-tab="stats" class="tab-btn px-3 py-2 font-medium">Resumen</button>
       <button data-tab="ajustes" class="tab-btn px-3 py-2 font-medium">Ajustes</button>
     </nav>
+
+    <!-- ============ TAB: RESUMEN (gráficas, se muestra al abrir la app) ============ -->
+    <section id="tab-stats" class="tab-panel hidden flex-1 px-4 py-4 space-y-4">
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-2">Completadas vs. no completadas (últimos 14 días)</p>
+        <canvas id="chart-completion" height="180"></canvas>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-2">Bloqueos de horario por día</p>
+        <canvas id="chart-locks-day" height="160"></canvas>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-2">¿En qué actividad te bloqueas más seguido?</p>
+        <canvas id="chart-locks-block" height="180"></canvas>
+      </div>
+      <p id="stats-empty" class="hidden text-center text-sm text-gray-500 py-10">Todavía no hay suficientes datos. Usa la app un par de días y aquí vas a ver tus patrones.</p>
+    </section>
+
+    <!-- ============ TAB: LEADS (semana actual, se reinicia cada lunes) ============ -->
+    <section id="tab-leads" class="tab-panel hidden flex-1 px-4 py-4 space-y-4">
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-2">Leads atendidos por día (esta semana)</p>
+        <canvas id="chart-leads-count" height="160"></canvas>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-2">Tiempo de respuesta promedio (min)</p>
+        <canvas id="chart-leads-response" height="140"></canvas>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-xs text-gray-400 uppercase mb-2">Duración de llamadas promedio (min)</p>
+        <canvas id="chart-leads-duration" height="140"></canvas>
+      </div>
+      <div>
+        <p class="text-xs text-gray-400 uppercase mb-2">Notas de llamadas</p>
+        <div id="leads-notes-list" class="space-y-2"></div>
+      </div>
+      <p id="leads-empty" class="hidden text-center text-sm text-gray-500 py-10">Todavía no has registrado leads esta semana.</p>
+      <p class="text-[11px] text-gray-600 text-center pt-1">Esta vista muestra solo la semana actual (lunes–domingo) y se reinicia sola cada lunes.</p>
+    </section>
 
     <!-- ============ TAB: HOY ============ -->
     <section id="tab-hoy" class="tab-panel flex-1 px-4 py-4 space-y-3"></section>
@@ -146,11 +251,19 @@
           <span id="week-leads-count">0 leads</span>
           <span id="week-leads-avg" class="text-gray-400">— min promedio</span>
         </div>
+        <p id="week-leads-duration" class="text-xs text-gray-500 mt-2">— min promedio de llamada</p>
       </div>
     </section>
 
     <!-- ============ TAB: AJUSTES ============ -->
     <section id="tab-ajustes" class="tab-panel hidden flex-1 px-4 py-4 space-y-4">
+      <div class="bg-gray-900 rounded-xl p-4">
+        <p class="text-sm font-medium mb-2">Tema</p>
+        <div class="flex bg-gray-800 rounded-xl p-1 gap-1">
+          <button id="btn-theme-dark" type="button" class="flex-1 rounded-lg py-2 text-xs font-medium transition">Oscuro</button>
+          <button id="btn-theme-light" type="button" class="flex-1 rounded-lg py-2 text-xs font-medium transition">Claro</button>
+        </div>
+      </div>
       <div class="bg-gray-900 rounded-xl p-4">
         <p class="text-xs text-gray-400 uppercase mb-1">Cuenta</p>
         <p id="settings-email" class="text-sm">—</p>
@@ -169,28 +282,56 @@
     </section>
   </div>
 
-  <!-- Botón flotante: registrar lead -->
+  <!-- Botón flotante: atender lead / terminar llamada (el contenido lo controla app.js) -->
   <button id="btn-fab-lead" class="safe-bottom-fab hidden fixed right-1/2 translate-x-[calc(50%-1px)] max-w-md mx-auto bg-orange-500 hover:bg-orange-400 transition text-white rounded-full px-5 py-3 shadow-lg shadow-orange-900/50 text-sm font-semibold flex items-center gap-2 z-20">
-    <span class="text-lg leading-none">⚡</span> Lead atendido
+    <span class="text-lg leading-none">📞</span> Atender Lead
   </button>
 
-  <!-- Modal registrar lead -->
-  <div id="modal-lead" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+  <!-- Modal: iniciar atención de lead -->
+  <div id="modal-lead-start" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
     <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in">
-      <h3 class="font-semibold">Registrar lead atendido</h3>
+      <h3 class="font-semibold">Atender Lead</h3>
+      <p class="text-xs text-gray-500">Esto marca como interrumpida la actividad que tienes corriendo ahora.</p>
+      <div>
+        <label class="text-xs text-gray-400">Nombre del lead</label>
+        <input id="lead-name-input" type="text" placeholder="Ej. Juan Pérez"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500" />
+      </div>
       <div>
         <label class="text-xs text-gray-400">Tiempo de respuesta (minutos)</label>
-        <input id="lead-minutes" type="number" min="0" placeholder="Ej. 12"
-          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+        <input id="lead-response-input" type="number" min="0" placeholder="Ej. 12"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500" />
       </div>
       <div>
-        <label class="text-xs text-gray-400">Nota rápida (opcional)</label>
-        <input id="lead-note" type="text" placeholder="Ej. Cliente interesado en cotización"
-          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+        <label class="text-xs text-gray-400">Nota (opcional)</label>
+        <input id="lead-note-input" type="text" placeholder="Ej. Cliente interesado en cotización"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500" />
+      </div>
+      <p id="lead-name-error" class="text-red-400 text-xs hidden">Escribe el nombre del lead.</p>
+      <div class="flex gap-3 pt-1">
+        <button id="btn-lead-start-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Cancelar</button>
+        <button id="btn-lead-start-confirm" class="flex-1 bg-orange-500 rounded-xl py-3 text-sm font-medium">Registrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: terminar llamada (la duración se calcula sola desde que diste "Registrar") -->
+  <div id="modal-lead-end" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in">
+      <h3 class="font-semibold">Llamada terminada</h3>
+      <p class="text-xs text-gray-500">Lead: <span id="lead-end-name" class="text-gray-300">—</span></p>
+      <div class="bg-gray-800 rounded-xl p-4 text-center">
+        <p class="text-[10px] text-gray-500 uppercase">Duración</p>
+        <p id="lead-end-duration" class="text-2xl font-bold text-orange-400">00:00</p>
+      </div>
+      <div>
+        <label class="text-xs text-gray-400">Notas — resumen breve de lo acordado</label>
+        <textarea id="lead-closing-note" rows="3" placeholder="Ej. Interesado en cotización, le llamo el jueves para cerrar"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500"></textarea>
       </div>
       <div class="flex gap-3 pt-1">
-        <button id="btn-lead-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Cancelar</button>
-        <button id="btn-lead-save" class="flex-1 bg-orange-500 rounded-xl py-3 text-sm font-medium">Guardar</button>
+        <button id="btn-lead-end-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Seguir en llamada</button>
+        <button id="btn-lead-end-confirm" class="flex-1 bg-orange-500 rounded-xl py-3 text-sm font-medium">Finalizar</button>
       </div>
     </div>
   </div>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "seguimiento-v2";
+const CACHE_NAME = "seguimiento-v10";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,7 +6,8 @@ const ASSETS = [
   "./firebase-config.js",
   "./manifest.json",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./icons/splash-intro-v2.mp4"
 ];
 
 self.addEventListener("install", (event) => {
