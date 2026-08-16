@@ -353,6 +353,84 @@
     </div>
   </div>
 
+  <!-- Modal: planificar prioridades de mañana -->
+  <div id="modal-priorities" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in max-h-[85vh] overflow-y-auto">
+      <h3 class="font-semibold">Prioridades de mañana</h3>
+      <p class="text-xs text-gray-500">Hasta 3 actividades importantes. Acomódalas donde quieras antes de las 2:00 pm — las actividades fijas de esa franja se recortan solas para hacerles espacio. Deja el título vacío o toca "Borrar" si no quieres usar una.</p>
+      <div id="priority-rows" class="space-y-3">
+        <div class="bg-gray-800/60 rounded-xl p-3 space-y-2" data-priority-row="0">
+          <div class="flex items-center justify-between gap-2">
+            <label class="text-xs text-gray-400">Prioridad 1</label>
+            <button data-priority-clear="0" class="text-[11px] text-red-400">Borrar</button>
+          </div>
+          <input data-priority-title="0" type="text" placeholder="Ej. Cerrar propuesta cliente X"
+            class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+          <div class="flex gap-2">
+            <input data-priority-start="0" type="time" min="10:00" max="14:00"
+              class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-blue-600" />
+            <select data-priority-duration="0"
+              class="w-28 bg-gray-800 border border-gray-700 rounded-xl px-2 py-3 text-sm focus:outline-none focus:border-blue-600">
+              <option value="15">15 min</option>
+              <option value="20">20 min</option>
+              <option value="30" selected>30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">60 min</option>
+              <option value="90">90 min</option>
+            </select>
+          </div>
+        </div>
+        <div class="bg-gray-800/60 rounded-xl p-3 space-y-2" data-priority-row="1">
+          <div class="flex items-center justify-between gap-2">
+            <label class="text-xs text-gray-400">Prioridad 2</label>
+            <button data-priority-clear="1" class="text-[11px] text-red-400">Borrar</button>
+          </div>
+          <input data-priority-title="1" type="text" placeholder="Ej. Llamar a proveedor"
+            class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+          <div class="flex gap-2">
+            <input data-priority-start="1" type="time" min="10:00" max="14:00"
+              class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-blue-600" />
+            <select data-priority-duration="1"
+              class="w-28 bg-gray-800 border border-gray-700 rounded-xl px-2 py-3 text-sm focus:outline-none focus:border-blue-600">
+              <option value="15">15 min</option>
+              <option value="20">20 min</option>
+              <option value="30" selected>30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">60 min</option>
+              <option value="90">90 min</option>
+            </select>
+          </div>
+        </div>
+        <div class="bg-gray-800/60 rounded-xl p-3 space-y-2" data-priority-row="2">
+          <div class="flex items-center justify-between gap-2">
+            <label class="text-xs text-gray-400">Prioridad 3</label>
+            <button data-priority-clear="2" class="text-[11px] text-red-400">Borrar</button>
+          </div>
+          <input data-priority-title="2" type="text" placeholder="Ej. Revisar cotización pendiente"
+            class="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+          <div class="flex gap-2">
+            <input data-priority-start="2" type="time" min="10:00" max="14:00"
+              class="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-blue-600" />
+            <select data-priority-duration="2"
+              class="w-28 bg-gray-800 border border-gray-700 rounded-xl px-2 py-3 text-sm focus:outline-none focus:border-blue-600">
+              <option value="15">15 min</option>
+              <option value="20">20 min</option>
+              <option value="30" selected>30 min</option>
+              <option value="45">45 min</option>
+              <option value="60">60 min</option>
+              <option value="90">90 min</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <p id="priority-error" class="text-red-400 text-xs hidden"></p>
+      <div class="flex gap-3 pt-1">
+        <button id="btn-priorities-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Cancelar</button>
+        <button id="btn-priorities-save" class="flex-1 bg-blue-600 rounded-xl py-3 text-sm font-medium">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: bloquear horario -->
   <div id="modal-lock-start" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
     <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in">

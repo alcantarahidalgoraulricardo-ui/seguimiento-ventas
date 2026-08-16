@@ -45,6 +45,89 @@ function dateStr(d) {
 function minutesNow(d) { return d.getHours() * 60 + d.getMinutes(); }
 function toMinutes(hhmm) { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; }
 function minutesFromTimestamp(ts) { const d = new Date(ts); return d.getHours() * 60 + d.getMinutes(); }
+function minutesToHHMM(min) {
+  const clamped = Math.max(0, Math.round(min));
+  const h = Math.floor(clamped / 60), m = clamped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// ---------- 1b. Prioridades del día siguiente ----------
+// Ventana en la que se pueden acomodar las 3 prioridades de mañana: 10:00–14:00.
+const PRIORITY_WINDOW_START = 10 * 60;
+const PRIORITY_WINDOW_END = 14 * 60;
+
+function nextDate(date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + 1);
+  return d;
+}
+
+// Mezcla los bloques fijos del día con las prioridades que se hayan planificado para ese
+// día (guardadas la tarde/noche anterior). Cada prioridad se inserta en el punto de la
+// franja 10:00–14:00 donde el usuario la haya querido acomodar, y las actividades fijas de
+// esa franja se recortan proporcionalmente para hacerle espacio, sin mover la hora de comida.
+function buildDayBlocksWithPriorities(baseBlocks, priorityTasks) {
+  const placed = (priorityTasks || [])
+    .filter((t) => t && t.title && t.title.trim() && t.start && t.duration > 0)
+    .map((t) => ({ ...t, startMin: toMinutes(t.start) }))
+    .sort((a, b) => a.startMin - b.startMin);
+
+  if (!placed.length) return baseBlocks.slice();
+
+  const inWindow = baseBlocks.filter((b) => toMinutes(b.start) >= PRIORITY_WINDOW_START && toMinutes(b.end) <= PRIORITY_WINDOW_END);
+  const outsideBefore = baseBlocks.filter((b) => toMinutes(b.end) <= PRIORITY_WINDOW_START);
+  const outsideAfter = baseBlocks.filter((b) => toMinutes(b.start) >= PRIORITY_WINDOW_END);
+
+  const F = inWindow.reduce((sum, b) => sum + (toMinutes(b.end) - toMinutes(b.start)), 0);
+  const P = placed.reduce((sum, t) => sum + t.duration, 0);
+  const scale = F > 0 ? Math.max(0.1, Math.min(1, (F - P) / F)) : 1;
+
+  const combined = [];
+  let taskIdx = 0;
+  inWindow.forEach((b) => {
+    while (taskIdx < placed.length && placed[taskIdx].startMin < toMinutes(b.start)) {
+      combined.push({ kind: "priority", task: placed[taskIdx] });
+      taskIdx++;
+    }
+    combined.push({ kind: "fixed", block: b });
+  });
+  while (taskIdx < placed.length) {
+    combined.push({ kind: "priority", task: placed[taskIdx] });
+    taskIdx++;
+  }
+
+  let cursor = PRIORITY_WINDOW_START;
+  const windowBlocks = [];
+  combined.forEach((item) => {
+    if (item.kind === "fixed") {
+      const b = item.block;
+      const origDur = toMinutes(b.end) - toMinutes(b.start);
+      const newDur = Math.max(5, Math.round(origDur * scale));
+      const start = cursor, end = start + newDur;
+      windowBlocks.push({ ...b, start: minutesToHHMM(start), end: minutesToHHMM(end), _shrunk: scale < 0.999 });
+      cursor = end;
+    } else {
+      const t = item.task;
+      const start = cursor, end = start + t.duration;
+      windowBlocks.push({
+        id: `priority_${t.id}`, label: `⭐ ${t.title.trim()}`,
+        start: minutesToHHMM(start), end: minutesToHHMM(end), isPriority: true,
+      });
+      cursor = end;
+    }
+  });
+  if (windowBlocks.length) windowBlocks[windowBlocks.length - 1].end = minutesToHHMM(PRIORITY_WINDOW_END);
+
+  return [...outsideBefore, ...windowBlocks, ...outsideAfter];
+}
+
+// Punto único: bloques "efectivos" de un día = bloques fijos + prioridades planificadas.
+function getEffectiveBlocksForDate(date, dayData) {
+  const { type, blocks } = getBlocksForDate(date);
+  const priorityTasks = (dayData && dayData.priorityTasks) || [];
+  if (!priorityTasks.length) return { type, blocks };
+  return { type, blocks: buildDayBlocksWithPriorities(blocks, priorityTasks) };
+}
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -56,16 +139,36 @@ function formatDuration(ms) {
   return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// ¿Este bloque cae dentro de un bloqueo de horario o se traslapa con una atención a lead?
+// Minutos del bloque que quedaron dentro de algún bloqueo de horario (puede sumar varios bloqueos).
+function lockOverlapMinutes(b, data) {
+  if (!data || !data.locks || !data.locks.length) return 0;
+  const s = toMinutes(b.start), e = toMinutes(b.end);
+  let total = 0;
+  data.locks.forEach((lock) => {
+    const lockStartMin = minutesFromTimestamp(lock.start);
+    const lockEndMin = lock.end ? minutesFromTimestamp(lock.end) : minutesNow(new Date());
+    const overlapStart = Math.max(s, lockStartMin);
+    const overlapEnd = Math.min(e, lockEndMin);
+    total += Math.max(0, overlapEnd - overlapStart);
+  });
+  return total;
+}
+
+// Un bloque solo se considera "bloqueado" por completo (y libre de penalización) si el
+// bloqueo de horario cubrió TODO su tiempo. Si solo cubrió una parte, el bloque sigue su
+// estado normal y se muestra la parte proporcional bloqueada dentro de él.
+function isBlockFullyLocked(b, data) {
+  const s = toMinutes(b.start), e = toMinutes(b.end);
+  const totalMin = e - s;
+  if (totalMin <= 0) return false;
+  return lockOverlapMinutes(b, data) >= totalMin - 0.5;
+}
+
+// ¿Este bloque cae dentro de un bloqueo de horario completo o se traslapa con una atención a lead?
 function isBlockExcused(b, data) {
   if (!data) return false;
+  if (isBlockFullyLocked(b, data)) return true;
   const s = toMinutes(b.start), e = toMinutes(b.end);
-  const lockHit = data.locks && data.locks.some((lock) => {
-    const lockStartMin = minutesFromTimestamp(lock.start);
-    const lockEndMin = lock.end ? minutesFromTimestamp(lock.end) : 24 * 60; // si sigue abierto, cubre hasta el final del día
-    return s < lockEndMin && e > lockStartMin;
-  });
-  if (lockHit) return true;
   return !!(data.leadSessions && data.leadSessions.some((sess) => {
     const sessStart = minutesFromTimestamp(sess.start);
     const sessEnd = sess.end ? minutesFromTimestamp(sess.end) : 24 * 60;
@@ -88,18 +191,22 @@ function getActiveLeadSession(data) {
 // Bloque que está corriendo ahora mismo (para saber cuál se interrumpe al atender un lead)
 function currentRunningBlockId() {
   const now = new Date();
-  const { type, blocks } = getBlocksForDate(now);
-  if (type === "weekend") return null;
+  const { blocks } = getEffectiveBlocksForDate(now, todayData);
+  if (!blocks.length) return null;
   const nowMin = minutesNow(now);
   const b = blocks.find((x) => !x.isBreak && toMinutes(x.start) <= nowMin && nowMin < toMinutes(x.end));
   return b ? b.id : null;
 }
 
-// Barra proporcional de tiempo "comido" por atención a leads dentro de un bloque.
-// Reparte cada llamada por traslape real de horario, así que si cruza de un bloque
-// a otro, cada bloque solo se lleva la parte que realmente le tocó.
-function interruptionBarHtml(block, sessions) {
+// Barra proporcional de tiempo "comido" dentro de un bloque, por atención a leads o por
+// bloqueos de horario. Reparte cada evento por traslape real de horario, así que si cruza
+// de un bloque a otro, cada bloque solo se lleva la parte que realmente le tocó.
+function interruptionBarHtml(block, sessions, opts) {
   if (!sessions || !sessions.length) return "";
+  const o = Object.assign({
+    color: "bg-orange-500", textColor: "text-orange-400", label: "Interrumpido por lead",
+    nameKey: "name", noteKey: "closingNote", fallbackName: "Lead",
+  }, opts || {});
   const blockStartMin = toMinutes(block.start), blockEndMin = toMinutes(block.end);
   const totalMin = blockEndMin - blockStartMin;
   if (totalMin <= 0) return "";
@@ -116,18 +223,24 @@ function interruptionBarHtml(block, sessions) {
     totalInterrupted += overlapMin;
     const leftPct = ((overlapStart - blockStartMin) / totalMin) * 100;
     const widthPct = (overlapMin / totalMin) * 100;
-    segments.push(`<div class="absolute top-0 bottom-0 bg-orange-500" style="left:${leftPct}%; width:${widthPct}%;" title="${escapeHtml(s.name || "Lead")}"></div>`);
-    if (s.closingNote && s.closingNote.trim()) {
-      notes.push(`<p class="text-[10px] text-gray-400 mt-0.5 italic">"${escapeHtml(s.closingNote)}" — ${escapeHtml(s.name || "Lead")}</p>`);
+    const name = s[o.nameKey] || o.fallbackName;
+    segments.push(`<div class="absolute top-0 bottom-0 ${o.color}" style="left:${leftPct}%; width:${widthPct}%;" title="${escapeHtml(name)}"></div>`);
+    const note = s[o.noteKey];
+    if (note && note.trim()) {
+      notes.push(`<p class="text-[10px] text-gray-400 mt-0.5 italic">"${escapeHtml(note)}" — ${escapeHtml(name)}</p>`);
     }
   });
   if (!segments.length) return "";
   return `
     <div class="relative h-1.5 rounded-full bg-gray-700/50 mt-1.5 overflow-hidden">${segments.join("")}</div>
-    <p class="text-[10px] text-orange-400 mt-0.5">Interrumpido por lead: ${Math.round(totalInterrupted)} min</p>
+    <p class="text-[10px] ${o.textColor} mt-0.5">${o.label}: ${Math.round(totalInterrupted)} min</p>
     ${notes.join("")}
   `;
 }
+const LOCK_BAR_OPTS = {
+  color: "bg-violet-500", textColor: "text-violet-400", label: "Bloqueado por horario",
+  nameKey: "reason", noteKey: "justification", fallbackName: "Bloqueo",
+};
 
 // ---------- 2. Firebase ----------
 let auth, db, currentUser = null;
@@ -142,7 +255,7 @@ try {
 }
 
 // ---------- 3. Estado en memoria ----------
-let todayData = { blocks: {}, leadSessions: [], locks: [] };
+let todayData = { blocks: {}, leadSessions: [], locks: [], priorityTasks: [] };
 let todayUnsub = null;
 let activeTab = "hoy";
 let editingBlockId = null;
@@ -275,6 +388,7 @@ function initTodayListener() {
     if (!todayData.blocks) todayData.blocks = {};
     if (!todayData.leadSessions) todayData.leadSessions = [];
     if (!todayData.locks) todayData.locks = [];
+    if (!todayData.priorityTasks) todayData.priorityTasks = [];
     renderToday();
     computeStreak();
   });
@@ -336,18 +450,56 @@ function historicalStatus(b, bd, date, data) {
   return "missed";
 }
 
+// Banner para planificar (o revisar) las 3 prioridades de mañana. Se muestra siempre,
+// incluso en días sin rutina fija (fines de semana), porque el domingo se planea el
+// lunes, el lunes se planea el martes, etc.
+function buildPriorityBanner() {
+  const tomorrow = nextDate(new Date());
+  const tomorrowLabel = DIAS_ES[tomorrow.getDay()];
+  const tasks = (todayData.tomorrowPriorityTasks || []).filter((t) => t && t.title && t.title.trim());
+  const box = document.createElement("div");
+  if (tasks.length) {
+    box.className = "bg-amber-950/30 border border-amber-700/50 rounded-xl p-3 fade-in";
+    box.innerHTML = `
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-sm font-medium text-amber-300">⭐ ${tomorrowLabel} ya está planeado</p>
+        <button id="btn-priorities-edit" class="text-xs text-amber-400 shrink-0">Editar</button>
+      </div>
+      <p class="text-[11px] text-amber-500/80 mt-1">${tasks.map((t) => escapeHtml(t.title)).join(" · ")}</p>
+    `;
+  } else {
+    box.className = "bg-gray-900 border border-gray-800 rounded-xl p-3 fade-in";
+    box.innerHTML = `
+      <button id="btn-priorities-open" class="w-full flex items-center justify-between gap-2 text-left">
+        <span class="text-sm font-medium">📋 Planifica ${tomorrowLabel}</span>
+        <span class="text-xs text-blue-400 shrink-0">Elegir 3 prioridades ›</span>
+      </button>
+    `;
+  }
+  const openBtn = box.querySelector("#btn-priorities-open");
+  if (openBtn) openBtn.addEventListener("click", openPrioritiesModal);
+  const editBtn = box.querySelector("#btn-priorities-edit");
+  if (editBtn) editBtn.addEventListener("click", openPrioritiesModal);
+  return box;
+}
+
 function renderToday() {
   const now = new Date();
-  const { type, blocks } = getBlocksForDate(now);
+  const { blocks } = getEffectiveBlocksForDate(now, todayData);
   $("#today-label").textContent = `${DIAS_ES[now.getDay()]} · ${dateStr(now)}`;
-  $("#today-title").textContent = type === "weekend" ? "Sin rutina hoy" : "Rutina de hoy";
+  $("#today-title").textContent = blocks.length ? "Rutina de hoy" : "Sin rutina hoy";
 
   const nowMin = minutesNow(now);
   const container = $("#tab-hoy");
   container.innerHTML = "";
 
-  if (type === "weekend") {
-    container.innerHTML = `<div class="text-center text-gray-500 text-sm py-16">Hoy no tienes bloques programados. Buen descanso. 🙌</div>`;
+  container.appendChild(buildPriorityBanner());
+
+  if (!blocks.length) {
+    const empty = document.createElement("div");
+    empty.className = "text-center text-gray-500 text-sm py-16";
+    empty.textContent = "Hoy no tienes bloques programados. Buen descanso. 🙌";
+    container.appendChild(empty);
     $("#points-today").textContent = "0";
     clearInterval(lockTimerInterval);
     updateLeadFab();
@@ -392,7 +544,15 @@ function renderToday() {
     const metricSummary = hasMetrics && bd.metrics
       ? b.metrics.map((m) => (bd.metrics[m.key] ? `${m.label.replace(/^# /,"")}: ${bd.metrics[m.key]}` : null)).filter(Boolean).join(" · ")
       : "";
-    const sessionsForBlock = todayData.leadSessions || []; // interruptionBarHtml filtra por traslape de horario
+    const leadSessionsForBlock = todayData.leadSessions || []; // interruptionBarHtml filtra por traslape de horario
+    const locksForBlock = todayData.locks || [];
+
+    let remainingHtml = "";
+    if (status === "current" && !b.isBreak) {
+      const remainingMin = Math.max(0, toMinutes(b.end) - nowMin);
+      const urgentClass = remainingMin <= 5 ? "text-red-400" : "text-blue-400";
+      remainingHtml = `<p class="text-[11px] ${urgentClass} mt-0.5">⏳ Te faltan ${remainingMin} min para terminar</p>`;
+    }
 
     card.innerHTML = `
       <button data-toggle="${b.id}" class="mt-0.5 shrink-0 w-6 h-6 rounded-full border-2 ${b.isBreak ? "border-gray-600" : "border-gray-500"} flex items-center justify-center ${bd.completed ? "bg-green-600 border-green-600" : ""}">
@@ -403,9 +563,11 @@ function renderToday() {
           <p class="text-sm font-medium ${b.isBreak ? "text-gray-400" : ""}">${escapeHtml(b.label)}</p>
           <span class="text-[10px] text-gray-500 shrink-0">${b.start}–${b.end}</span>
         </div>
-        <p class="text-[11px] text-gray-500 mt-0.5">${STATUS_LABEL[status]}${bd.notes ? " · con notas" : ""}</p>
+        <p class="text-[11px] text-gray-500 mt-0.5">${STATUS_LABEL[status]}${bd.notes ? " · con notas" : ""}${b._shrunk ? " · horario recortado" : ""}</p>
         ${metricSummary ? `<p class="text-[11px] text-blue-400 mt-0.5">${escapeHtml(metricSummary)}</p>` : ""}
-        ${interruptionBarHtml(b, sessionsForBlock)}
+        ${remainingHtml}
+        ${interruptionBarHtml(b, leadSessionsForBlock)}
+        ${interruptionBarHtml(b, locksForBlock, LOCK_BAR_OPTS)}
       </div>
     `;
     container.appendChild(card);
@@ -422,6 +584,86 @@ function renderToday() {
   $("#points-today").textContent = points;
   updateLeadFab();
 }
+
+// Refresca la vista de Hoy cada 30s para que los bloques pasen de "próximo" a "en curso"
+// a "pendiente" solos, y para que el contador de tiempo restante se mantenga al día.
+setInterval(() => {
+  if (currentUser && activeTab === "hoy") renderToday();
+}, 30000);
+
+// ---------- Prioridades de mañana ----------
+function openPrioritiesModal() {
+  const existing = todayData.tomorrowPriorityTasks || [];
+  for (let i = 0; i < 3; i++) {
+    const t = existing[i] || {};
+    const titleEl = document.querySelector(`[data-priority-title="${i}"]`);
+    const startEl = document.querySelector(`[data-priority-start="${i}"]`);
+    const durEl = document.querySelector(`[data-priority-duration="${i}"]`);
+    if (titleEl) titleEl.value = t.title || "";
+    if (startEl) startEl.value = t.start || "";
+    if (durEl) durEl.value = t.duration ? String(t.duration) : "30";
+  }
+  $("#priority-error").classList.add("hidden");
+  $("#modal-priorities").classList.remove("hidden");
+}
+$("#btn-priorities-cancel").addEventListener("click", () => $("#modal-priorities").classList.add("hidden"));
+$all("[data-priority-clear]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const i = btn.dataset.priorityClear;
+    const titleEl = document.querySelector(`[data-priority-title="${i}"]`);
+    const startEl = document.querySelector(`[data-priority-start="${i}"]`);
+    if (titleEl) titleEl.value = "";
+    if (startEl) startEl.value = "";
+  });
+});
+$("#btn-priorities-save").addEventListener("click", () => {
+  const errEl = $("#priority-error");
+  errEl.classList.add("hidden");
+  const tasks = [];
+  for (let i = 0; i < 3; i++) {
+    const title = (document.querySelector(`[data-priority-title="${i}"]`).value || "").trim();
+    const start = document.querySelector(`[data-priority-start="${i}"]`).value;
+    const duration = Number(document.querySelector(`[data-priority-duration="${i}"]`).value || 30);
+    if (!title) continue; // fila vacía = se omite (equivale a "borrarla")
+    if (!start) {
+      errEl.textContent = `Ponle una hora a "${title}".`;
+      errEl.classList.remove("hidden");
+      return;
+    }
+    const startMin = toMinutes(start);
+    if (startMin < PRIORITY_WINDOW_START || startMin + duration > PRIORITY_WINDOW_END) {
+      errEl.textContent = `"${title}" debe caber entre las 10:00 am y las 2:00 pm.`;
+      errEl.classList.remove("hidden");
+      return;
+    }
+    tasks.push({ id: `p${i}`, title, start, duration });
+  }
+  const sorted = [...tasks].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+  for (let i = 1; i < sorted.length; i++) {
+    if (toMinutes(sorted[i].start) < toMinutes(sorted[i - 1].start) + sorted[i - 1].duration) {
+      errEl.textContent = `"${sorted[i].title}" se traslapa con "${sorted[i - 1].title}".`;
+      errEl.classList.remove("hidden");
+      return;
+    }
+  }
+  const totalPriorityMin = tasks.reduce((sum, t) => sum + t.duration, 0);
+  if (totalPriorityMin > 180) {
+    errEl.textContent = "Deja al menos 1 hora libre para tus actividades fijas de la mañana (máximo 3 horas en total de prioridades).";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  const tomorrow = nextDate(new Date());
+  dayDocRef(tomorrow).set({ priorityTasks: tasks }, { merge: true })
+    .then(() => {
+      saveToday({ tomorrowPriorityTasks: tasks });
+      $("#modal-priorities").classList.add("hidden");
+      showToast(tasks.length ? "Prioridades de mañana guardadas" : "Prioridades de mañana borradas");
+    })
+    .catch((e) => {
+      errEl.textContent = "Error al guardar: " + e.message;
+      errEl.classList.remove("hidden");
+    });
+});
 
 // ---------- Atender lead (inicio / fin de llamada, duración automática) ----------
 let leadTimerInterval = null;
@@ -714,8 +956,9 @@ $("#btn-block-save").addEventListener("click", () => {
 
 function saveToday(partial) {
   const today = new Date();
-  const { type, blocks } = getBlocksForDate(today);
+  const { type } = getBlocksForDate(today);
   const merged = { ...todayData, ...partial, dayType: type, updatedAt: Date.now() };
+  const { blocks } = getEffectiveBlocksForDate(today, merged);
   const { points } = computeDayPoints(merged, blocks);
   merged.points = points;
   dayDocRef(today).set(merged, { merge: false }).catch((e) => showToast("Error al guardar: " + e.message));
@@ -731,17 +974,18 @@ async function computeStreak() {
   let streak = 0;
   let d = new Date();
   // si hoy aún no está completo, empieza a contar desde ayer
-  const { type: todayType, blocks: todayBlocks } = getBlocksForDate(d);
+  const { type: todayType, blocks: todayBlocks } = getEffectiveBlocksForDate(d, todayData);
   const todayComplete = todayType !== "weekend" && computeDayPoints(todayData, todayBlocks).allDone;
   if (!todayComplete) d.setDate(d.getDate() - 1);
   else streak++;
 
   for (let i = 0; i < 60; i++) {
-    const { type, blocks } = getBlocksForDate(d);
+    const { type } = getBlocksForDate(d);
     if (type === "weekend") { d.setDate(d.getDate() - 1); continue; }
     try {
       const snap = await dayDocRef(d).get();
       if (!snap.exists) break;
+      const { blocks } = getEffectiveBlocksForDate(d, snap.data());
       const { allDone } = computeDayPoints(snap.data(), blocks);
       if (!allDone) break;
       streak++;
@@ -769,7 +1013,6 @@ async function renderWeekTab() {
 
   const results = await Promise.all(
     days.map(async (d) => {
-      const { type, blocks } = getBlocksForDate(d);
       let data = { blocks: {}, leadSessions: [], locks: [] };
       try {
         const snap = await dayDocRef(d).get();
@@ -777,6 +1020,7 @@ async function renderWeekTab() {
       } catch (e) { /* si falla la lectura, se queda el día vacío */ }
       if (!data.blocks) data.blocks = {};
       if (!data.leadSessions) data.leadSessions = [];
+      const { type, blocks } = getEffectiveBlocksForDate(d, data);
       const realBlocks = blocks.filter((b) => !b.isBreak);
       const doneCount = realBlocks.filter((b) => data.blocks[b.id] && data.blocks[b.id].completed).length;
       const { points } = computeDayPoints(data, blocks);
@@ -843,7 +1087,7 @@ function renderDayDetailModal(entry) {
   const list = $("#day-detail-list");
   list.innerHTML = "";
 
-  if (type === "weekend" || blocks.length === 0) {
+  if (blocks.length === 0) {
     list.innerHTML = `<p class="text-sm text-gray-500 text-center py-6">Sin bloques programados ese día.</p>`;
     return;
   }
@@ -854,7 +1098,8 @@ function renderDayDetailModal(entry) {
     const metricSummary = b.metrics && bd.metrics
       ? b.metrics.map((m) => (bd.metrics[m.key] ? `${m.label.replace(/^# /, "")}: ${bd.metrics[m.key]}` : null)).filter(Boolean).join(" · ")
       : "";
-    const sessionsForBlock = data.leadSessions || []; // interruptionBarHtml filtra por traslape de horario
+    const leadSessionsForBlock = data.leadSessions || []; // interruptionBarHtml filtra por traslape de horario
+    const locksForBlock = data.locks || [];
     const row = document.createElement("div");
     row.className = `status-${status} border-l-4 rounded-xl p-3`;
     row.innerHTML = `
@@ -867,7 +1112,8 @@ function renderDayDetailModal(entry) {
       <p class="text-[11px] text-gray-500 mt-0.5">${STATUS_LABEL[status]}</p>
       ${metricSummary ? `<p class="text-[11px] text-blue-400 mt-0.5">${escapeHtml(metricSummary)}</p>` : ""}
       ${bd.notes ? `<p class="text-[11px] text-gray-400 mt-0.5 italic">"${escapeHtml(bd.notes)}"</p>` : ""}
-      ${interruptionBarHtml(b, sessionsForBlock)}
+      ${interruptionBarHtml(b, leadSessionsForBlock)}
+      ${interruptionBarHtml(b, locksForBlock, LOCK_BAR_OPTS)}
     `;
     list.appendChild(row);
   });
@@ -979,9 +1225,9 @@ async function renderStatsTab() {
   for (let i = 0; i < 14; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const { type, blocks } = getBlocksForDate(d);
+    const { type } = getBlocksForDate(d);
     if (type === "weekend") continue;
-    days.push({ date: d, blocks });
+    days.push({ date: d });
   }
   days.reverse(); // orden cronológico para la gráfica de tendencia por día
 
@@ -989,7 +1235,7 @@ async function renderStatsTab() {
   const lockCountByDay = {};
   const lockCountByBlock = {};
 
-  await Promise.all(days.map(async ({ date, blocks }) => {
+  await Promise.all(days.map(async ({ date }) => {
     let data = { blocks: {}, locks: [] };
     try {
       const snap = await dayDocRef(date).get();
@@ -997,6 +1243,7 @@ async function renderStatsTab() {
     } catch (e) { /* si falla, se cuenta como día sin datos */ }
     if (!data.blocks) data.blocks = {};
     if (!data.locks) data.locks = [];
+    const { blocks } = getEffectiveBlocksForDate(date, data);
 
     blocks.filter((b) => !b.isBreak).forEach((b) => {
       const bd = data.blocks[b.id] || {};
@@ -1090,8 +1337,8 @@ function scheduleTodayNotifications() {
   notifTimers.forEach((t) => clearTimeout(t));
   notifTimers = [];
   const now = new Date();
-  const { type, blocks } = getBlocksForDate(now);
-  if (type === "weekend") return;
+  const { blocks } = getEffectiveBlocksForDate(now, todayData);
+  if (!blocks.length) return;
   const nowMin = minutesNow(now);
   blocks.filter((b) => !b.isBreak).forEach((b) => {
     const startMin = toMinutes(b.start);
