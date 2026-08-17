@@ -56,13 +56,30 @@ const SCHEDULE_TEMPLATES = {
   },
 };
 const DEFAULT_SCHEDULE_ID = "vendedor_a";
-// Único correo que se reconoce automáticamente como gerente al crear cuenta.
-const MANAGER_EMAIL = "alcantarahidalgoraulricardo@gmail.com";
+// Correos que se reconocen automáticamente como gerente al iniciar sesión.
+const MANAGER_EMAILS = ["alcantarahidalgoraulricardo@gmail.com", "ricardo.hidalgo@parsonscnc.com"];
 
 const DIAS_ES = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 
-function getBlocksForDate(date, scheduleId) {
-  const template = SCHEDULE_TEMPLATES[scheduleId] || SCHEDULE_TEMPLATES.gerente;
+// Resuelve qué plantilla de horario usar para un perfil { scheduleId, customSchedule }.
+// Si el perfil trae un horario personalizado (armado por el gerente para ese vendedor
+// específico), ese manda; si no, se usa la plantilla de SCHEDULE_TEMPLATES por su id.
+function resolveScheduleTemplate(profile) {
+  const custom = profile && profile.customSchedule;
+  if (custom && Array.isArray(custom.weekday) && custom.weekday.length) return custom;
+  const sid = (profile && profile.scheduleId) || "gerente";
+  return SCHEDULE_TEMPLATES[sid] || SCHEDULE_TEMPLATES.gerente;
+}
+
+function scheduleLabel(profile) {
+  const custom = profile && profile.customSchedule;
+  if (custom && Array.isArray(custom.weekday) && custom.weekday.length) return "Horario personalizado";
+  const sid = (profile && profile.scheduleId) || "gerente";
+  return (SCHEDULE_TEMPLATES[sid] || {}).label || sid;
+}
+
+function getBlocksForDate(date, profile) {
+  const template = resolveScheduleTemplate(profile);
   const day = date.getDay(); // 0 Dom - 6 Sab
   if (day >= 1 && day <= 4) return { type: "weekday", blocks: template.weekday };
   if (day === 5) return { type: "friday", blocks: template.friday || template.weekday };
@@ -152,12 +169,12 @@ function buildDayBlocksWithPriorities(baseBlocks, priorityTasks) {
   return [...outsideBefore, ...windowBlocks, ...outsideAfter];
 }
 
-// Punto único: bloques "efectivos" de un día = bloques fijos (según la plantilla de
-// horario del usuario) + prioridades planificadas. Si no se pasa scheduleId, usa el
-// del usuario que tiene la sesión abierta.
-function getEffectiveBlocksForDate(date, dayData, scheduleId) {
-  const sid = scheduleId || currentScheduleId();
-  const { type, blocks } = getBlocksForDate(date, sid);
+// Punto único: bloques "efectivos" de un día = bloques fijos (según el horario del
+// usuario: personalizado si tiene uno asignado, si no la plantilla de su rol) +
+// prioridades planificadas. Si no se pasa profile, usa el usuario con sesión abierta.
+function getEffectiveBlocksForDate(date, dayData, profile) {
+  const p = profile || currentUserProfile;
+  const { type, blocks } = getBlocksForDate(date, p);
   const priorityTasks = (dayData && dayData.priorityTasks) || [];
   if (!priorityTasks.length) return { type, blocks };
   return { type, blocks: buildDayBlocksWithPriorities(blocks, priorityTasks) };
@@ -286,6 +303,20 @@ try {
   firebaseReady = true;
 } catch (e) {
   console.error("Firebase no se pudo inicializar. Revisa firebase-config.js", e);
+}
+
+// App secundaria de Firebase: sirve solo para que el gerente pueda crear cuentas de
+// vendedores sin que eso cierre su propia sesión (crear un usuario con el SDK de
+// Firebase inicia sesión automáticamente como ese usuario nuevo en la app que se use,
+// así que usamos una instancia aparte y la cerramos apenas terminamos).
+function getVendorCreatorAuth() {
+  let app;
+  try {
+    app = firebase.app("vendorCreator");
+  } catch (e) {
+    app = firebase.initializeApp(FIREBASE_CONFIG, "vendorCreator");
+  }
+  return app.auth();
 }
 
 // ---------- 3. Estado en memoria ----------
@@ -417,7 +448,9 @@ $("#btn-signout").addEventListener("click", () => auth.signOut());
 // Crea o carga el perfil (nombre, rol, horario) del usuario que inició sesión, y
 // lo registra/actualiza en el roster del equipo para que el gerente lo pueda ver.
 function isManagerEmail(email) {
-  return !!email && email.trim().toLowerCase() === MANAGER_EMAIL.trim().toLowerCase();
+  if (!email) return false;
+  const e = email.trim().toLowerCase();
+  return MANAGER_EMAILS.some((m) => m.trim().toLowerCase() === e);
 }
 async function ensureUserProfile(user) {
   const ref = userDocRef(user.uid);
@@ -483,7 +516,7 @@ if (firebaseReady) {
       $("#settings-email").textContent = user.email;
       $("#settings-role").textContent = isManager()
         ? "Gerente de ventas"
-        : `Vendedor · ${(SCHEDULE_TEMPLATES[currentUserProfile.scheduleId] || {}).label || currentUserProfile.scheduleId}`;
+        : `Vendedor · ${scheduleLabel(currentUserProfile)}`;
       $("#tab-btn-equipo").classList.toggle("hidden", !isManager());
       initTodayListener();
       renderWeekTab();
@@ -1296,7 +1329,7 @@ async function renderEquipoTab() {
       const snap = await userDocRef(m.uid).collection("days").doc(dateStr(today)).get();
       if (snap.exists) data = snap.data();
     } catch (e) { /* si falla, se muestra sin datos */ }
-    const { blocks } = getEffectiveBlocksForDate(today, data, m.scheduleId);
+    const { blocks } = getEffectiveBlocksForDate(today, data, m);
     const realBlocks = blocks.filter((b) => !b.isBreak);
     const doneCount = realBlocks.filter((b) => data.blocks && data.blocks[b.id] && data.blocks[b.id].completed).length;
     const { points } = computeDayPoints(data, blocks);
@@ -1310,7 +1343,7 @@ async function renderEquipoTab() {
     row.innerHTML = `
       <div class="min-w-0">
         <p class="text-sm font-medium truncate">${escapeHtml(r.member.name || r.member.email || "Vendedor")}</p>
-        <p class="text-[11px] text-gray-500">${(SCHEDULE_TEMPLATES[r.member.scheduleId] || {}).label || r.member.scheduleId}</p>
+        <p class="text-[11px] text-gray-500">${escapeHtml(scheduleLabel(r.member))}</p>
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <div class="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
@@ -1334,7 +1367,7 @@ async function openTeamMemberDetail(member) {
     if (snap.exists) data = snap.data();
   } catch (e) { showToast("No se pudo cargar: " + e.message); return; }
   if (!data.blocks) data.blocks = {};
-  const { type, blocks } = getEffectiveBlocksForDate(today, data, member.scheduleId);
+  const { type, blocks } = getEffectiveBlocksForDate(today, data, member);
   const { points } = computeDayPoints(data, blocks);
   renderDayDetailModal({
     date: today, type, blocks, data, points,
@@ -1342,6 +1375,143 @@ async function openTeamMemberDetail(member) {
   });
   $("#modal-day-detail").classList.remove("hidden");
 }
+
+// ---------- Crear vendedores desde la app (solo gerente) ----------
+let newVendorRowCount = 0;
+
+function newVendorRowHtml(idx, vals) {
+  vals = vals || {};
+  return `
+    <div class="bg-gray-800/60 rounded-xl p-3 space-y-2" data-vendor-row="${idx}">
+      <div class="flex items-center justify-between gap-2">
+        <input data-vrow-label="${idx}" type="text" value="${escapeHtml(vals.label || "")}" placeholder="Ej. Prospectación"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-600" />
+        <button data-vrow-remove="${idx}" type="button" class="text-red-400 text-xs shrink-0">✕</button>
+      </div>
+      <div class="flex items-center gap-2">
+        <input data-vrow-start="${idx}" type="time" value="${vals.start || ""}"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-600" />
+        <span class="text-gray-500 text-xs">a</span>
+        <input data-vrow-end="${idx}" type="time" value="${vals.end || ""}"
+          class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-600" />
+        <label class="flex items-center gap-1 text-[11px] text-gray-400 shrink-0">
+          <input data-vrow-break="${idx}" type="checkbox" ${vals.isBreak ? "checked" : ""} /> Descanso
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+function addNewVendorRow(vals) {
+  const idx = newVendorRowCount++;
+  const wrap = document.createElement("div");
+  wrap.innerHTML = newVendorRowHtml(idx, vals);
+  const rowEl = wrap.firstElementChild;
+  $("#new-vendor-rows").appendChild(rowEl);
+  rowEl.querySelector(`[data-vrow-remove="${idx}"]`).addEventListener("click", () => rowEl.remove());
+}
+
+function openNewVendorModal() {
+  $("#new-vendor-name").value = "";
+  $("#new-vendor-email").value = "";
+  $("#new-vendor-password").value = "";
+  $("#new-vendor-error").classList.add("hidden");
+  $("#new-vendor-rows").innerHTML = "";
+  newVendorRowCount = 0;
+  // Arranca con 3 filas vacías como punto de partida, como pediste para el primer vendedor.
+  addNewVendorRow({ label: "Pendientes CRM", start: "10:00", end: "11:00" });
+  addNewVendorRow({ label: "Comida", start: "14:00", end: "15:00", isBreak: true });
+  addNewVendorRow({});
+  $("#modal-new-vendor").classList.remove("hidden");
+}
+
+$("#btn-new-vendor").addEventListener("click", openNewVendorModal);
+$("#btn-new-vendor-add-row").addEventListener("click", () => addNewVendorRow({}));
+$("#btn-new-vendor-cancel").addEventListener("click", () => $("#modal-new-vendor").classList.add("hidden"));
+
+async function createVendorAccount({ name, email, password, customSchedule }) {
+  const secAuth = getVendorCreatorAuth();
+  const cred = await secAuth.createUserWithEmailAndPassword(email, password);
+  const uid = cred.user.uid;
+  await secAuth.signOut();
+  const profile = {
+    name, role: "vendedor", scheduleId: "custom", customSchedule,
+    teamId: TEAM_ID, email, createdBy: currentUser.uid,
+  };
+  await userDocRef(uid).set(profile, { merge: true });
+  await teamMemberRef(uid).set({
+    uid, name, role: "vendedor", scheduleId: "custom", customSchedule, email,
+  }, { merge: true });
+  return uid;
+}
+
+$("#btn-new-vendor-save").addEventListener("click", async () => {
+  const errEl = $("#new-vendor-error");
+  errEl.classList.add("hidden");
+  const name = $("#new-vendor-name").value.trim();
+  const email = $("#new-vendor-email").value.trim();
+  const password = $("#new-vendor-password").value;
+  if (!name) { errEl.textContent = "Escribe el nombre del vendedor."; errEl.classList.remove("hidden"); return; }
+  if (!email) { errEl.textContent = "Escribe el correo del vendedor."; errEl.classList.remove("hidden"); return; }
+  if (!password || password.length < 6) { errEl.textContent = "La contraseña debe tener al menos 6 caracteres."; errEl.classList.remove("hidden"); return; }
+
+  const rows = [];
+  $all("#new-vendor-rows [data-vendor-row]").forEach((rowEl) => {
+    const idx = rowEl.dataset.vendorRow;
+    const label = rowEl.querySelector(`[data-vrow-label="${idx}"]`).value.trim();
+    const start = rowEl.querySelector(`[data-vrow-start="${idx}"]`).value;
+    const end = rowEl.querySelector(`[data-vrow-end="${idx}"]`).value;
+    const isBreak = rowEl.querySelector(`[data-vrow-break="${idx}"]`).checked;
+    if (!label && !start && !end) return; // fila vacía, se ignora
+    if (!label || !start || !end) { rows.push({ error: true, label: label || "(sin nombre)" }); return; }
+    if (toMinutes(end) <= toMinutes(start)) { rows.push({ error: true, label, reason: "hora" }); return; }
+    rows.push({ id: `c${idx}`, label, start, end, isBreak: isBreak || undefined });
+  });
+
+  const badRow = rows.find((r) => r.error);
+  if (badRow) {
+    errEl.textContent = badRow.reason === "hora"
+      ? `"${badRow.label}" — la hora de fin debe ser después de la de inicio.`
+      : `"${badRow.label}" — completa nombre, hora de inicio y hora de fin (o bórrala).`;
+    errEl.classList.remove("hidden");
+    return;
+  }
+  if (!rows.length) { errEl.textContent = "Agrega al menos una actividad."; errEl.classList.remove("hidden"); return; }
+
+  const sorted = [...rows].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+  for (let i = 1; i < sorted.length; i++) {
+    if (toMinutes(sorted[i].start) < toMinutes(sorted[i - 1].end)) {
+      errEl.textContent = `"${sorted[i].label}" se traslapa con "${sorted[i - 1].label}".`;
+      errEl.classList.remove("hidden");
+      return;
+    }
+  }
+
+  const saveBtn = $("#btn-new-vendor-save");
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Creando…";
+  try {
+    await createVendorAccount({ name, email, password, customSchedule: { weekday: sorted, friday: null } });
+    $("#modal-new-vendor").classList.add("hidden");
+    $("#vendor-created-email").textContent = email;
+    $("#vendor-created-password").textContent = password;
+    $("#modal-vendor-created").classList.remove("hidden");
+    renderEquipoTab();
+  } catch (e) {
+    const map = {
+      "auth/email-already-in-use": "Ya existe una cuenta con ese correo.",
+      "auth/invalid-email": "Correo inválido.",
+      "auth/weak-password": "La contraseña es muy débil (mínimo 6 caracteres).",
+    };
+    errEl.textContent = map[e.code] || ("Error al crear la cuenta: " + e.message);
+    errEl.classList.remove("hidden");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Crear vendedor";
+  }
+});
+
+$("#btn-vendor-created-close").addEventListener("click", () => $("#modal-vendor-created").classList.add("hidden"));
 
 // ---------- 12. Tabs ----------
 $all(".tab-btn").forEach((btn) => {

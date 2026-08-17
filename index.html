@@ -266,9 +266,10 @@
 
     <!-- ============ TAB: EQUIPO (solo gerente) ============ -->
     <section id="tab-equipo" class="tab-panel hidden flex-1 px-4 py-4 space-y-3">
+      <button id="btn-new-vendor" class="w-full bg-blue-600 hover:bg-blue-500 transition rounded-xl px-4 py-3 text-sm font-medium">+ Nuevo vendedor</button>
       <p class="text-xs text-gray-500">Toca a un vendedor para ver el detalle de su día.</p>
       <div id="equipo-list" class="space-y-2"></div>
-      <p id="equipo-empty" class="hidden text-center text-sm text-gray-500 py-10">Todavía no tienes vendedores registrados. Comparte la app para que creen su cuenta — aparecerán aquí solos.</p>
+      <p id="equipo-empty" class="hidden text-center text-sm text-gray-500 py-10">Todavía no tienes vendedores registrados. Toca "+ Nuevo vendedor" para crear el primero.</p>
     </section>
 
     <!-- ============ TAB: AJUSTES ============ -->
@@ -495,6 +496,58 @@
       </div>
       <div id="day-detail-list" class="space-y-2"></div>
       <button id="btn-day-detail-close" class="w-full bg-gray-800 rounded-xl py-3 text-sm mt-2">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- Modal: crear vendedor con su propio horario (solo gerente) -->
+  <div id="modal-new-vendor" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in max-h-[85vh] overflow-y-auto">
+      <h3 class="font-semibold">Nuevo vendedor</h3>
+      <p class="text-xs text-gray-500">Creas su cuenta y le armas su horario aquí mismo. Luego le compartes el correo y la contraseña para que entre.</p>
+      <div>
+        <label class="text-xs text-gray-400">Nombre</label>
+        <input id="new-vendor-name" type="text" placeholder="Ej. Juan Pérez"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+      </div>
+      <div>
+        <label class="text-xs text-gray-400">Correo</label>
+        <input id="new-vendor-email" type="email" placeholder="vendedor@parsonscnc.com"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+      </div>
+      <div>
+        <label class="text-xs text-gray-400">Contraseña temporal (mínimo 6 caracteres)</label>
+        <input id="new-vendor-password" type="text" placeholder="Ej. parsons2026"
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="text-xs text-gray-400">Actividades (de lunes a viernes)</label>
+          <button id="btn-new-vendor-add-row" type="button" class="text-xs text-blue-400">+ Agregar actividad</button>
+        </div>
+        <div id="new-vendor-rows" class="space-y-2"></div>
+      </div>
+
+      <p id="new-vendor-error" class="text-red-400 text-xs hidden"></p>
+      <div class="flex gap-3 pt-1">
+        <button id="btn-new-vendor-cancel" class="flex-1 bg-gray-800 rounded-xl py-3 text-sm">Cancelar</button>
+        <button id="btn-new-vendor-save" class="flex-1 bg-blue-600 rounded-xl py-3 text-sm font-medium">Crear vendedor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: credenciales del vendedor recién creado -->
+  <div id="modal-vendor-created" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
+    <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in">
+      <h3 class="font-semibold">Cuenta creada ✅</h3>
+      <p class="text-xs text-gray-500">Comparte estos datos con tu vendedor para que entre a la app:</p>
+      <div class="bg-gray-800 rounded-xl p-4 space-y-1">
+        <p class="text-xs text-gray-500">Correo</p>
+        <p id="vendor-created-email" class="text-sm font-medium break-all">—</p>
+        <p class="text-xs text-gray-500 pt-2">Contraseña</p>
+        <p id="vendor-created-password" class="text-sm font-medium">—</p>
+      </div>
+      <button id="btn-vendor-created-close" class="w-full bg-blue-600 rounded-xl py-3 text-sm font-medium">Listo</button>
     </div>
   </div>
 

@@ -143,25 +143,34 @@ cada quien con su propio horario de bloques. Para que funcione necesitas
 2. Borra todo y pega de nuevo el contenido actualizado de `firestore.rules`
    (de esta carpeta) → **Publicar**.
 
-Cómo se crea una cuenta de vendedor:
-
-1. El vendedor abre la URL de la app y toca **"Crear cuenta"**.
-2. Llena correo, contraseña, su nombre, y elige su horario en el
-   desplegable (por ahora solo existe "Vendedor — 10 am a 6 pm"; cuando
-   agreguemos otro horario distinto, va a aparecer ahí también).
-3. Desde ese momento ese vendedor ve su propia rutina, puntos, racha,
-   leads, bloqueos y prioridades — todo igual que tú, pero con su horario.
-
 Tu cuenta (la que ya usas, con tu correo) se sigue reconociendo sola como
 gerente y no necesita hacer nada distinto.
 
+Cómo creas una cuenta de vendedor (tú, desde la app):
+
+1. Entra con tu cuenta de gerente → pestaña **Equipo** → **"+ Nuevo vendedor"**.
+2. Pon su nombre, correo y una contraseña temporal.
+3. En "Actividades" arma su horario: nombre de la actividad, hora de inicio,
+   hora de fin, y marca "Descanso" si es su comida. Agrega o borra filas con
+   los botones de "+ Agregar actividad" / "✕". Este horario aplica de lunes
+   a viernes.
+4. Toca **"Crear vendedor"** — te muestro el correo y la contraseña para que
+   se los compartas. Ese vendedor ya puede entrar a la app y ver su rutina,
+   puntos, racha, leads, bloqueos y prioridades, con el horario que le armaste.
+
+También existe la opción de que un vendedor cree su propia cuenta tocando
+"Crear cuenta" en la pantalla de entrada y eligiendo un horario ya armado del
+desplegable — úsala si prefieres que ellos mismos se registren en vez de
+crearlos tú uno por uno.
+
 Cómo ves a tu equipo:
 
-- En la app, con tu cuenta de gerente, aparece una pestaña nueva **"Equipo"**
-  con la lista de tus vendedores, su % de cumplimiento del día y sus puntos.
-  Toca a cualquiera para ver el detalle bloque por bloque de su día de hoy.
-- Solo puedes **ver** los datos de tus vendedores, no editarlos — cada quien
-  marca sus propias actividades desde su cuenta.
+- En la pestaña **Equipo** ves la lista de tus vendedores, su % de
+  cumplimiento del día y sus puntos. Toca a cualquiera para ver el detalle
+  bloque por bloque de su día de hoy.
+- Puedes **ver** los datos de tus vendedores y **crear/editar su perfil y
+  horario**, pero no puedes editar lo que marcan día a día — eso lo controla
+  cada quien desde su cuenta.
 
 ## Si algo no funciona
 
