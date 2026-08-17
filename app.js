@@ -404,13 +404,22 @@ $("#btn-signout").addEventListener("click", () => auth.signOut());
 
 // Crea o carga el perfil (nombre, rol, horario) del usuario que inició sesión, y
 // lo registra/actualiza en el roster del equipo para que el gerente lo pueda ver.
+function isManagerEmail(email) {
+  return !!email && email.trim().toLowerCase() === MANAGER_EMAIL.trim().toLowerCase();
+}
 async function ensureUserProfile(user) {
   const ref = userDocRef(user.uid);
   const snap = await ref.get();
+  const isBoss = isManagerEmail(user.email);
   if (snap.exists && snap.data() && snap.data().role) {
     currentUserProfile = snap.data();
+    // Autocorrección: si el correo es el del gerente pero quedó guardado con otro
+    // rol (por ejemplo por un error anterior), se corrige solo.
+    if (isBoss && currentUserProfile.role !== "gerente") {
+      currentUserProfile = { ...currentUserProfile, role: "gerente", scheduleId: "gerente" };
+      await ref.set({ role: "gerente", scheduleId: "gerente" }, { merge: true });
+    }
   } else {
-    const isBoss = user.email === MANAGER_EMAIL;
     const profile = {
       name: (pendingSignup && pendingSignup.name) || (snap.exists && snap.data() && snap.data().name) || user.email.split("@")[0],
       role: isBoss ? "gerente" : "vendedor",

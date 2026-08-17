@@ -1,4 +1,4 @@
-const CACHE_NAME = "seguimiento-v12";
+const CACHE_NAME = "seguimiento-v13";
 const ASSETS = [
   "./",
   "./index.html",
