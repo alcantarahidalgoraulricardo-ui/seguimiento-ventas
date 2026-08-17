@@ -3,38 +3,69 @@
    ============================================================ */
 
 // ---------- 1. Definición de la rutina (bloques del día) ----------
-const BLOCKS_WEEKDAY = [
-  { id: "pendientes_crm", label: "PENDIENTES CRM",                start: "10:00", end: "12:00" },
-  { id: "embudo",      label: "Revisión de embudo",               start: "12:00", end: "12:30",
-    metrics: [{ key: "leads_revisados", label: "# Leads revisados", type: "number" }] },
-  { id: "reactivacion",label: "Reactivación de clientes",         start: "12:30", end: "14:00",
-    metrics: [{ key: "llamadas", label: "# Llamadas de reactivación", type: "number" }] },
-  { id: "comida",      label: "Comida",                           start: "14:00", end: "15:00", isBreak: true },
-  { id: "cambaceo",    label: "Cambaceo / Prospección",           start: "15:00", end: "15:45",
-    metrics: [{ key: "llamadas_cambaceo", label: "# Llamadas de cambaceo", type: "number" }] },
-  { id: "mapeo_ia",    label: "Mapeo de Parsons con IA",          start: "15:45", end: "16:30",
-    metrics: [{ key: "empresas_mapeadas", label: "# Empresas mapeadas", type: "number" }] },
-  { id: "metricas",    label: "Revisión de métricas",             start: "16:30", end: "17:00" },
-  { id: "reporte",     label: "Reporte diario CRM",               start: "17:00", end: "17:20" },
-  { id: "asesoria",    label: "Coaching a vendedores",            start: "17:20", end: "18:00" },
-];
-
-const BLOCKS_FRIDAY = [
-  { id: "pendientes_crm", label: "PENDIENTES CRM",                start: "10:00", end: "12:00" },
-  { id: "embudo",      label: "Revisión de embudo",               start: "12:00", end: "12:30",
-    metrics: [{ key: "leads_revisados", label: "# Leads revisados", type: "number" }] },
-  { id: "junta_prep",  label: "Preparación de junta",             start: "12:30", end: "14:00" },
-  { id: "comida",      label: "Comida",                           start: "14:00", end: "15:00", isBreak: true },
-  { id: "junta",       label: "Junta: reporte CRM con vendedores + métricas de reactivación y recompra",
-    start: "15:00", end: "18:00" },
-];
+// Cada usuario (gerente o vendedor) tiene su propia plantilla de horario,
+// guardada en su perfil (users/{uid}.scheduleId). SCHEDULE_TEMPLATES es el
+// catálogo de plantillas disponibles; agregar una nueva rutina para otro
+// vendedor es agregar una entrada más aquí.
+const SCHEDULE_TEMPLATES = {
+  gerente: {
+    label: "Gerente de ventas",
+    weekday: [
+      { id: "pendientes_crm", label: "PENDIENTES CRM",                start: "10:00", end: "12:00" },
+      { id: "embudo",      label: "Revisión de embudo",               start: "12:00", end: "12:30",
+        metrics: [{ key: "leads_revisados", label: "# Leads revisados", type: "number" }] },
+      { id: "reactivacion",label: "Reactivación de clientes",         start: "12:30", end: "14:00",
+        metrics: [{ key: "llamadas", label: "# Llamadas de reactivación", type: "number" }] },
+      { id: "comida",      label: "Comida",                           start: "14:00", end: "15:00", isBreak: true },
+      { id: "cambaceo",    label: "Cambaceo / Prospección",           start: "15:00", end: "15:45",
+        metrics: [{ key: "llamadas_cambaceo", label: "# Llamadas de cambaceo", type: "number" }] },
+      { id: "mapeo_ia",    label: "Mapeo de Parsons con IA",          start: "15:45", end: "16:30",
+        metrics: [{ key: "empresas_mapeadas", label: "# Empresas mapeadas", type: "number" }] },
+      { id: "metricas",    label: "Revisión de métricas",             start: "16:30", end: "17:00" },
+      { id: "reporte",     label: "Reporte diario CRM",               start: "17:00", end: "17:20" },
+      { id: "asesoria",    label: "Coaching a vendedores",            start: "17:20", end: "18:00" },
+    ],
+    friday: [
+      { id: "pendientes_crm", label: "PENDIENTES CRM",                start: "10:00", end: "12:00" },
+      { id: "embudo",      label: "Revisión de embudo",               start: "12:00", end: "12:30",
+        metrics: [{ key: "leads_revisados", label: "# Leads revisados", type: "number" }] },
+      { id: "junta_prep",  label: "Preparación de junta",             start: "12:30", end: "14:00" },
+      { id: "comida",      label: "Comida",                           start: "14:00", end: "15:00", isBreak: true },
+      { id: "junta",       label: "Junta: reporte CRM con vendedores + métricas de reactivación y recompra",
+        start: "15:00", end: "18:00" },
+    ],
+  },
+  vendedor_a: {
+    label: "Vendedor — 10 am a 6 pm",
+    weekday: [
+      { id: "pendientes_crm", label: "Pendientes CRM",               start: "10:00", end: "11:00" },
+      { id: "recontacto",  label: "Recontactar leads sin respuesta", start: "11:00", end: "11:30",
+        metrics: [{ key: "leads_recontactados", label: "# Leads recontactados", type: "number" }] },
+      { id: "embudo",      label: "Revisión de embudo CRM",          start: "11:30", end: "12:30",
+        metrics: [{ key: "leads_revisados", label: "# Leads revisados", type: "number" }] },
+      { id: "reactivacion",label: "Reactivación de clientes",        start: "12:30", end: "14:00",
+        metrics: [{ key: "llamadas", label: "# Llamadas de reactivación", type: "number" }] },
+      { id: "comida",      label: "Comida",                          start: "14:00", end: "15:00", isBreak: true },
+      { id: "prospectacion", label: "Prospectación",                 start: "15:00", end: "16:30",
+        metrics: [{ key: "prospectos", label: "# Prospectos contactados", type: "number" }] },
+      { id: "cotizaciones", label: "Realizar cotizaciones",          start: "16:40", end: "17:40",
+        metrics: [{ key: "cotizaciones", label: "# Cotizaciones", type: "number" }] },
+      { id: "planear_dia", label: "Planear día siguiente",           start: "17:40", end: "18:00" },
+    ],
+    friday: null, // mismo horario que el resto de la semana
+  },
+};
+const DEFAULT_SCHEDULE_ID = "vendedor_a";
+// Único correo que se reconoce automáticamente como gerente al crear cuenta.
+const MANAGER_EMAIL = "alcantarahidalgoraulricardo@gmail.com";
 
 const DIAS_ES = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 
-function getBlocksForDate(date) {
+function getBlocksForDate(date, scheduleId) {
+  const template = SCHEDULE_TEMPLATES[scheduleId] || SCHEDULE_TEMPLATES.gerente;
   const day = date.getDay(); // 0 Dom - 6 Sab
-  if (day >= 1 && day <= 4) return { type: "weekday", blocks: BLOCKS_WEEKDAY };
-  if (day === 5) return { type: "friday", blocks: BLOCKS_FRIDAY };
+  if (day >= 1 && day <= 4) return { type: "weekday", blocks: template.weekday };
+  if (day === 5) return { type: "friday", blocks: template.friday || template.weekday };
   return { type: "weekend", blocks: [] };
 }
 
@@ -121,9 +152,12 @@ function buildDayBlocksWithPriorities(baseBlocks, priorityTasks) {
   return [...outsideBefore, ...windowBlocks, ...outsideAfter];
 }
 
-// Punto único: bloques "efectivos" de un día = bloques fijos + prioridades planificadas.
-function getEffectiveBlocksForDate(date, dayData) {
-  const { type, blocks } = getBlocksForDate(date);
+// Punto único: bloques "efectivos" de un día = bloques fijos (según la plantilla de
+// horario del usuario) + prioridades planificadas. Si no se pasa scheduleId, usa el
+// del usuario que tiene la sesión abierta.
+function getEffectiveBlocksForDate(date, dayData, scheduleId) {
+  const sid = scheduleId || currentScheduleId();
+  const { type, blocks } = getBlocksForDate(date, sid);
   const priorityTasks = (dayData && dayData.priorityTasks) || [];
   if (!priorityTasks.length) return { type, blocks };
   return { type, blocks: buildDayBlocksWithPriorities(blocks, priorityTasks) };
@@ -260,6 +294,20 @@ let todayUnsub = null;
 let activeTab = "hoy";
 let editingBlockId = null;
 let weekCache = {}; // dateStr -> { date, type, blocks, data, points }
+let currentUserProfile = null; // { name, role: "gerente"|"vendedor", scheduleId, teamId }
+const TEAM_ID = "parsons";
+function currentScheduleId() {
+  return (currentUserProfile && currentUserProfile.scheduleId) || "gerente";
+}
+function isManager() {
+  return !!(currentUserProfile && currentUserProfile.role === "gerente");
+}
+function teamMemberRef(uid) {
+  return db.collection("teams").doc(TEAM_ID).collection("members").doc(uid);
+}
+function userDocRef(uid) {
+  return db.collection("users").doc(uid);
+}
 
 // ---------- 4. Utilidades UI ----------
 function $(sel) { return document.querySelector(sel); }
@@ -314,6 +362,24 @@ $("#btn-theme-light").addEventListener("click", () => applyTheme("light"));
 applyTheme(document.body.classList.contains("light") ? "light" : "dark");
 
 // ---------- 5. Autenticación ----------
+// Opciones del selector de horario (todas las plantillas menos la del gerente,
+// que se asigna sola por correo). Agregar un vendedor con horario nuevo = agregar
+// una entrada en SCHEDULE_TEMPLATES y aparece aquí automáticamente.
+(function populateScheduleSelect() {
+  const sel = $("#auth-schedule");
+  if (!sel) return;
+  sel.innerHTML = "";
+  Object.keys(SCHEDULE_TEMPLATES).forEach((key) => {
+    if (key === "gerente") return;
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = SCHEDULE_TEMPLATES[key].label;
+    sel.appendChild(opt);
+  });
+})();
+
+let pendingSignup = null; // { name, scheduleId } — se usa una sola vez al crear cuenta
+
 $("#btn-signin").addEventListener("click", async () => {
   const email = $("#auth-email").value.trim();
   const pass = $("#auth-password").value;
@@ -327,11 +393,40 @@ $("#btn-signup").addEventListener("click", async () => {
   const pass = $("#auth-password").value;
   if (!email || !pass) return showAuthError("Escribe correo y contraseña.");
   if (pass.length < 6) return showAuthError("La contraseña debe tener al menos 6 caracteres.");
+  const name = ($("#auth-name").value || "").trim() || email.split("@")[0];
+  const scheduleId = $("#auth-schedule").value || DEFAULT_SCHEDULE_ID;
+  pendingSignup = { name, scheduleId };
   try {
     await auth.createUserWithEmailAndPassword(email, pass);
-  } catch (e) { showAuthError(traduceError(e)); }
+  } catch (e) { pendingSignup = null; showAuthError(traduceError(e)); }
 });
 $("#btn-signout").addEventListener("click", () => auth.signOut());
+
+// Crea o carga el perfil (nombre, rol, horario) del usuario que inició sesión, y
+// lo registra/actualiza en el roster del equipo para que el gerente lo pueda ver.
+async function ensureUserProfile(user) {
+  const ref = userDocRef(user.uid);
+  const snap = await ref.get();
+  if (snap.exists && snap.data() && snap.data().role) {
+    currentUserProfile = snap.data();
+  } else {
+    const isBoss = user.email === MANAGER_EMAIL;
+    const profile = {
+      name: (pendingSignup && pendingSignup.name) || (snap.exists && snap.data() && snap.data().name) || user.email.split("@")[0],
+      role: isBoss ? "gerente" : "vendedor",
+      scheduleId: isBoss ? "gerente" : ((pendingSignup && pendingSignup.scheduleId) || DEFAULT_SCHEDULE_ID),
+      teamId: TEAM_ID,
+      email: user.email,
+    };
+    await ref.set(profile, { merge: true });
+    currentUserProfile = profile;
+  }
+  pendingSignup = null;
+  await teamMemberRef(user.uid).set({
+    uid: user.uid, name: currentUserProfile.name, role: currentUserProfile.role,
+    scheduleId: currentUserProfile.scheduleId, email: user.email,
+  }, { merge: true });
+}
 
 function showAuthError(msg) {
   const el = $("#auth-error");
@@ -351,22 +446,35 @@ function traduceError(e) {
 }
 
 if (firebaseReady) {
-  auth.onAuthStateChanged((user) => {
+  auth.onAuthStateChanged(async (user) => {
     currentUser = user;
     if (user) {
+      try {
+        await ensureUserProfile(user);
+      } catch (e) {
+        showAuthError("No se pudo cargar tu perfil: " + e.message);
+        currentUserProfile = currentUserProfile || { name: user.email, role: "vendedor", scheduleId: DEFAULT_SCHEDULE_ID };
+      }
       $("#auth-screen").classList.add("hidden");
       $("#main-app").classList.remove("hidden");
       $("#btn-fab-lead").classList.remove("hidden");
+      $("#settings-name").textContent = currentUserProfile.name || "—";
       $("#settings-email").textContent = user.email;
+      $("#settings-role").textContent = isManager()
+        ? "Gerente de ventas"
+        : `Vendedor · ${(SCHEDULE_TEMPLATES[currentUserProfile.scheduleId] || {}).label || currentUserProfile.scheduleId}`;
+      $("#tab-btn-equipo").classList.toggle("hidden", !isManager());
       initTodayListener();
       renderWeekTab();
       renderStatsTab();
       renderLeadsTab();
       registerServiceWorker();
     } else {
+      currentUserProfile = null;
       $("#auth-screen").classList.remove("hidden");
       $("#main-app").classList.add("hidden");
       $("#btn-fab-lead").classList.add("hidden");
+      $("#tab-btn-equipo").classList.add("hidden");
       if (todayUnsub) todayUnsub();
     }
   });
@@ -1080,8 +1188,8 @@ function openDayDetail(ds) {
 }
 
 function renderDayDetailModal(entry) {
-  const { date, type, blocks, data, points } = entry;
-  $("#day-detail-title").textContent = `${DIAS_ES[date.getDay()]} · ${dateStr(date)}`;
+  const { date, type, blocks, data, points, titleOverride } = entry;
+  $("#day-detail-title").textContent = titleOverride || `${DIAS_ES[date.getDay()]} · ${dateStr(date)}`;
   $("#day-detail-points").textContent = `${points} pts`;
 
   const list = $("#day-detail-list");
@@ -1143,6 +1251,77 @@ function renderDayDetailModal(entry) {
 
 $("#btn-day-detail-close").addEventListener("click", () => $("#modal-day-detail").classList.add("hidden"));
 
+// ---------- Equipo (solo gerente): ver el día de cada vendedor ----------
+async function renderEquipoTab() {
+  if (!currentUser || !isManager()) return;
+  const listEl = $("#equipo-list");
+  const emptyEl = $("#equipo-empty");
+  listEl.innerHTML = "";
+  let members = [];
+  try {
+    const snap = await db.collection("teams").doc(TEAM_ID).collection("members").get();
+    members = snap.docs.map((d) => d.data()).filter((m) => m.uid && m.uid !== currentUser.uid);
+  } catch (e) {
+    listEl.innerHTML = `<p class="text-sm text-red-400 text-center py-6">No se pudo cargar el equipo: ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  emptyEl.classList.toggle("hidden", members.length > 0);
+  if (!members.length) return;
+
+  const today = new Date();
+  const rows = await Promise.all(members.map(async (m) => {
+    let data = { blocks: {}, leadSessions: [], locks: [] };
+    try {
+      const snap = await userDocRef(m.uid).collection("days").doc(dateStr(today)).get();
+      if (snap.exists) data = snap.data();
+    } catch (e) { /* si falla, se muestra sin datos */ }
+    const { blocks } = getEffectiveBlocksForDate(today, data, m.scheduleId);
+    const realBlocks = blocks.filter((b) => !b.isBreak);
+    const doneCount = realBlocks.filter((b) => data.blocks && data.blocks[b.id] && data.blocks[b.id].completed).length;
+    const { points } = computeDayPoints(data, blocks);
+    return { member: m, total: realBlocks.length, done: doneCount, points };
+  }));
+
+  rows.forEach((r) => {
+    const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
+    const row = document.createElement("div");
+    row.className = "flex items-center justify-between bg-gray-900 rounded-xl p-3 cursor-pointer active:bg-gray-800 transition";
+    row.innerHTML = `
+      <div class="min-w-0">
+        <p class="text-sm font-medium truncate">${escapeHtml(r.member.name || r.member.email || "Vendedor")}</p>
+        <p class="text-[11px] text-gray-500">${(SCHEDULE_TEMPLATES[r.member.scheduleId] || {}).label || r.member.scheduleId}</p>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <div class="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div class="h-full bg-blue-600" style="width:${pct}%"></div>
+        </div>
+        <span class="text-xs text-gray-400 w-10 text-right">${pct}%</span>
+        <span class="text-xs text-blue-400 w-12 text-right">${r.points} pts</span>
+        <span class="text-gray-600 text-xs">›</span>
+      </div>
+    `;
+    row.addEventListener("click", () => openTeamMemberDetail(r.member));
+    listEl.appendChild(row);
+  });
+}
+
+async function openTeamMemberDetail(member) {
+  const today = new Date();
+  let data = { blocks: {}, leadSessions: [], locks: [] };
+  try {
+    const snap = await userDocRef(member.uid).collection("days").doc(dateStr(today)).get();
+    if (snap.exists) data = snap.data();
+  } catch (e) { showToast("No se pudo cargar: " + e.message); return; }
+  if (!data.blocks) data.blocks = {};
+  const { type, blocks } = getEffectiveBlocksForDate(today, data, member.scheduleId);
+  const { points } = computeDayPoints(data, blocks);
+  renderDayDetailModal({
+    date: today, type, blocks, data, points,
+    titleOverride: `${member.name || "Vendedor"} · Hoy`,
+  });
+  $("#modal-day-detail").classList.remove("hidden");
+}
+
 // ---------- 12. Tabs ----------
 $all(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -1154,6 +1333,7 @@ $all(".tab-btn").forEach((btn) => {
     if (activeTab === "semana") renderWeekTab();
     if (activeTab === "stats") renderStatsTab();
     if (activeTab === "leads") renderLeadsTab();
+    if (activeTab === "equipo") renderEquipoTab();
   });
 });
 

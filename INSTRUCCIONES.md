@@ -132,6 +132,37 @@ tu Mac antes de publicarla:
 
 Si algo no se ve bien ahí, dímelo antes de subir los archivos a GitHub.
 
+## Vendedores y equipo (cuentas para tus vendedores)
+
+La app ahora soporta varias cuentas: la tuya (gerente) y una por cada vendedor,
+cada quien con su propio horario de bloques. Para que funcione necesitas
+**volver a publicar las reglas de Firestore** (cambiaron):
+
+1. Entra a tu proyecto en https://console.firebase.google.com → Firestore
+   Database → pestaña **Reglas**.
+2. Borra todo y pega de nuevo el contenido actualizado de `firestore.rules`
+   (de esta carpeta) → **Publicar**.
+
+Cómo se crea una cuenta de vendedor:
+
+1. El vendedor abre la URL de la app y toca **"Crear cuenta"**.
+2. Llena correo, contraseña, su nombre, y elige su horario en el
+   desplegable (por ahora solo existe "Vendedor — 10 am a 6 pm"; cuando
+   agreguemos otro horario distinto, va a aparecer ahí también).
+3. Desde ese momento ese vendedor ve su propia rutina, puntos, racha,
+   leads, bloqueos y prioridades — todo igual que tú, pero con su horario.
+
+Tu cuenta (la que ya usas, con tu correo) se sigue reconociendo sola como
+gerente y no necesita hacer nada distinto.
+
+Cómo ves a tu equipo:
+
+- En la app, con tu cuenta de gerente, aparece una pestaña nueva **"Equipo"**
+  con la lista de tus vendedores, su % de cumplimiento del día y sus puntos.
+  Toca a cualquiera para ver el detalle bloque por bloque de su día de hoy.
+- Solo puedes **ver** los datos de tus vendedores, no editarlos — cada quien
+  marca sus propias actividades desde su cuenta.
+
 ## Si algo no funciona
 
 - Pantalla en blanco o error de login → revisa que copiaste bien los valores
