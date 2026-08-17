@@ -380,6 +380,10 @@ applyTheme(document.body.classList.contains("light") ? "light" : "dark");
 
 let pendingSignup = null; // { name, scheduleId } — se usa una sola vez al crear cuenta
 
+$("#btn-toggle-signup-fields").addEventListener("click", () => {
+  $("#auth-signup-fields").classList.toggle("hidden");
+});
+
 $("#btn-signin").addEventListener("click", async () => {
   const email = $("#auth-email").value.trim();
   const pass = $("#auth-password").value;
@@ -393,6 +397,14 @@ $("#btn-signup").addEventListener("click", async () => {
   const pass = $("#auth-password").value;
   if (!email || !pass) return showAuthError("Escribe correo y contraseña.");
   if (pass.length < 6) return showAuthError("La contraseña debe tener al menos 6 caracteres.");
+  // Si todavía no ha abierto los campos de nombre/horario, los muestra primero
+  // en vez de crear la cuenta de una vez (para que no se le pase llenarlos).
+  const signupFields = $("#auth-signup-fields");
+  if (signupFields.classList.contains("hidden")) {
+    signupFields.classList.remove("hidden");
+    showAuthError("Pon tu nombre y elige tu horario, luego toca 'Crear cuenta' otra vez.");
+    return;
+  }
   const name = ($("#auth-name").value || "").trim() || email.split("@")[0];
   const scheduleId = $("#auth-schedule").value || DEFAULT_SCHEDULE_ID;
   pendingSignup = { name, scheduleId };
