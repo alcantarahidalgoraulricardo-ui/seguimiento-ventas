@@ -61,29 +61,50 @@ const MANAGER_EMAILS = ["alcantarahidalgoraulricardo@gmail.com", "ricardo.hidalg
 
 const DIAS_ES = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 
-// Resuelve qué plantilla de horario usar para un perfil { scheduleId, customSchedule }.
-// Si el perfil trae un horario personalizado (armado por el gerente para ese vendedor
-// específico), ese manda; si no, se usa la plantilla de SCHEDULE_TEMPLATES por su id.
-function resolveScheduleTemplate(profile) {
-  const custom = profile && profile.customSchedule;
-  if (custom && Array.isArray(custom.weekday) && custom.weekday.length) return custom;
-  const sid = (profile && profile.scheduleId) || "gerente";
-  return SCHEDULE_TEMPLATES[sid] || SCHEDULE_TEMPLATES.gerente;
+// ¿Este customSchedule tiene algo útil? Soporta dos formatos:
+//  - nuevo: { days: { 1: [...lunes], 2: [...martes], ... 5: [...viernes] } } — cada día
+//    de la semana puede tener actividades totalmente distintas.
+//  - viejo (compatibilidad con cuentas creadas antes): { weekday: [...], friday: [...] }
+//    — mismo horario lunes a jueves, y uno aparte (o el mismo) el viernes.
+function hasCustomSchedule(custom) {
+  if (!custom) return false;
+  if (custom.days) return Object.keys(custom.days).some((k) => (custom.days[k] || []).length > 0);
+  return Array.isArray(custom.weekday) && custom.weekday.length > 0;
 }
 
 function scheduleLabel(profile) {
   const custom = profile && profile.customSchedule;
-  if (custom && Array.isArray(custom.weekday) && custom.weekday.length) return "Horario personalizado";
+  if (hasCustomSchedule(custom)) return "Horario personalizado";
   const sid = (profile && profile.scheduleId) || "gerente";
   return (SCHEDULE_TEMPLATES[sid] || {}).label || sid;
 }
 
 function getBlocksForDate(date, profile) {
-  const template = resolveScheduleTemplate(profile);
   const day = date.getDay(); // 0 Dom - 6 Sab
-  if (day >= 1 && day <= 4) return { type: "weekday", blocks: template.weekday };
-  if (day === 5) return { type: "friday", blocks: template.friday || template.weekday };
-  return { type: "weekend", blocks: [] };
+
+  // El domingo siempre es descanso para todos. El sábado es descanso por defecto,
+  // pero si el usuario tiene un horario personalizado con actividades ese día, se
+  // usan esas (para vendedores que sí trabajan sábado).
+  if (day === 0) return { type: "weekend", blocks: [] };
+
+  const custom = profile && profile.customSchedule;
+  if (day === 6) {
+    if (custom && custom.days && (custom.days[6] || []).length) {
+      return { type: "saturday", blocks: custom.days[6] };
+    }
+    return { type: "weekend", blocks: [] };
+  }
+
+  const type = day === 5 ? "friday" : "weekday";
+  if (custom && custom.days && hasCustomSchedule(custom)) {
+    return { type, blocks: custom.days[day] || [] };
+  }
+  if (custom && Array.isArray(custom.weekday) && custom.weekday.length) {
+    return { type, blocks: day === 5 ? (custom.friday || custom.weekday) : custom.weekday };
+  }
+  const sid = (profile && profile.scheduleId) || "gerente";
+  const template = SCHEDULE_TEMPLATES[sid] || SCHEDULE_TEMPLATES.gerente;
+  return { type, blocks: day === 5 ? (template.friday || template.weekday) : template.weekday };
 }
 
 function dateStr(d) {
@@ -1142,7 +1163,7 @@ async function computeStreak() {
   else streak++;
 
   for (let i = 0; i < 60; i++) {
-    const { type } = getBlocksForDate(d);
+    const { type } = getBlocksForDate(d, currentUserProfile);
     if (type === "weekend") { d.setDate(d.getDate() - 1); continue; }
     try {
       const snap = await dayDocRef(d).get();
@@ -1171,7 +1192,9 @@ async function renderWeekTab() {
   if (!currentUser) return;
   const monday = startOfWeek(new Date());
   const days = [];
-  for (let i = 0; i < 5; i++) { const d = new Date(monday); d.setDate(monday.getDate() + i); days.push(d); }
+  // Lunes a sábado: el sábado solo se muestra abajo si el usuario tiene actividades
+  // ese día (para no mostrar una fila vacía a quien no trabaja los sábados).
+  for (let i = 0; i < 6; i++) { const d = new Date(monday); d.setDate(monday.getDate() + i); days.push(d); }
 
   const results = await Promise.all(
     days.map(async (d) => {
@@ -1194,7 +1217,9 @@ async function renderWeekTab() {
   const wrap = $("#week-days");
   wrap.innerHTML = "";
   let totalDone = 0, totalBlocks = 0, totalPoints = 0, allLeads = [];
-  results.forEach((r) => {
+  // El sábado (índice 5) solo se lista si de verdad tiene actividades ese día.
+  const visibleResults = results.filter((r, idx) => idx < 5 || r.total > 0);
+  visibleResults.forEach((r) => {
     totalDone += r.done; totalBlocks += r.total; totalPoints += r.points; allLeads = allLeads.concat(r.leadSessions);
     const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
     const isToday = dateStr(r.date) === dateStr(new Date());
@@ -1377,7 +1402,13 @@ async function openTeamMemberDetail(member) {
 }
 
 // ---------- Crear vendedores desde la app (solo gerente) ----------
+// Cada día de la semana (lunes a viernes) guarda su propia lista de filas
+// { label, start, end, isBreak } mientras se arma el horario en el modal.
+const VENDOR_DAY_LABELS = { 1: "lunes", 2: "martes", 3: "miércoles", 4: "jueves", 5: "viernes", 6: "sábado" };
+const VENDOR_DAYS = [1, 2, 3, 4, 5, 6];
 let newVendorRowCount = 0;
+let vendorDaySchedules = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+let currentVendorDay = 1;
 
 function newVendorRowHtml(idx, vals) {
   vals = vals || {};
@@ -1411,17 +1442,88 @@ function addNewVendorRow(vals) {
   rowEl.querySelector(`[data-vrow-remove="${idx}"]`).addEventListener("click", () => rowEl.remove());
 }
 
+// Lee del DOM las filas del día que se está mostrando ahora mismo.
+function serializeVendorRows() {
+  const rows = [];
+  $all("#new-vendor-rows [data-vendor-row]").forEach((rowEl) => {
+    const idx = rowEl.dataset.vendorRow;
+    const label = rowEl.querySelector(`[data-vrow-label="${idx}"]`).value.trim();
+    const start = rowEl.querySelector(`[data-vrow-start="${idx}"]`).value;
+    const end = rowEl.querySelector(`[data-vrow-end="${idx}"]`).value;
+    const isBreak = rowEl.querySelector(`[data-vrow-break="${idx}"]`).checked;
+    if (!label && !start && !end) return; // fila vacía, no se guarda
+    rows.push({ label, start, end, isBreak });
+  });
+  return rows;
+}
+
+function renderVendorRows(rows) {
+  $("#new-vendor-rows").innerHTML = "";
+  newVendorRowCount = 0;
+  if (!rows || !rows.length) { addNewVendorRow({}); return; }
+  rows.forEach((r) => addNewVendorRow(r));
+}
+
+function refreshVendorCopyFromSelect() {
+  const sel = $("#new-vendor-copy-from");
+  sel.innerHTML = "";
+  VENDOR_DAYS.forEach((d) => {
+    if (d === currentVendorDay) return;
+    const opt = document.createElement("option");
+    opt.value = d;
+    opt.textContent = "Copiar de " + DIAS_ES[d];
+    sel.appendChild(opt);
+  });
+}
+
+function switchVendorDay(day) {
+  vendorDaySchedules[currentVendorDay] = serializeVendorRows();
+  currentVendorDay = day;
+  renderVendorRows(vendorDaySchedules[day]);
+  $("#new-vendor-day-label").textContent = `Actividades del ${VENDOR_DAY_LABELS[day]}`;
+  $all("[data-vendor-day-tab]").forEach((btn) => {
+    const active = Number(btn.dataset.vendorDayTab) === day;
+    btn.classList.toggle("bg-blue-600", active);
+    btn.classList.toggle("text-white", active);
+    btn.classList.toggle("text-gray-400", !active);
+  });
+  refreshVendorCopyFromSelect();
+}
+
+$all("[data-vendor-day-tab]").forEach((btn) => {
+  btn.addEventListener("click", () => switchVendorDay(Number(btn.dataset.vendorDayTab)));
+});
+
+$("#btn-new-vendor-copy").addEventListener("click", () => {
+  const from = Number($("#new-vendor-copy-from").value);
+  if (!from) return;
+  const source = from === currentVendorDay ? serializeVendorRows() : vendorDaySchedules[from];
+  vendorDaySchedules[currentVendorDay] = source.map((r) => ({ ...r }));
+  renderVendorRows(vendorDaySchedules[currentVendorDay]);
+  showToast(`Copiado de ${DIAS_ES[from]}`);
+});
+
 function openNewVendorModal() {
   $("#new-vendor-name").value = "";
   $("#new-vendor-email").value = "";
   $("#new-vendor-password").value = "";
   $("#new-vendor-error").classList.add("hidden");
-  $("#new-vendor-rows").innerHTML = "";
-  newVendorRowCount = 0;
-  // Arranca con 3 filas vacías como punto de partida, como pediste para el primer vendedor.
-  addNewVendorRow({ label: "Pendientes CRM", start: "10:00", end: "11:00" });
-  addNewVendorRow({ label: "Comida", start: "14:00", end: "15:00", isBreak: true });
-  addNewVendorRow({});
+  // Arranca con un punto de partida en lunes; los demás días quedan vacíos hasta
+  // que el gerente los arme (o los copie de otro día).
+  vendorDaySchedules = {
+    1: [{ label: "Pendientes CRM", start: "10:00", end: "11:00" }, { label: "Comida", start: "14:00", end: "15:00", isBreak: true }],
+    2: [], 3: [], 4: [], 5: [], 6: [],
+  };
+  currentVendorDay = 1;
+  renderVendorRows(vendorDaySchedules[1]);
+  $("#new-vendor-day-label").textContent = "Actividades del lunes";
+  $all("[data-vendor-day-tab]").forEach((btn) => {
+    const active = Number(btn.dataset.vendorDayTab) === 1;
+    btn.classList.toggle("bg-blue-600", active);
+    btn.classList.toggle("text-white", active);
+    btn.classList.toggle("text-gray-400", !active);
+  });
+  refreshVendorCopyFromSelect();
   $("#modal-new-vendor").classList.remove("hidden");
 }
 
@@ -1455,43 +1557,47 @@ $("#btn-new-vendor-save").addEventListener("click", async () => {
   if (!email) { errEl.textContent = "Escribe el correo del vendedor."; errEl.classList.remove("hidden"); return; }
   if (!password || password.length < 6) { errEl.textContent = "La contraseña debe tener al menos 6 caracteres."; errEl.classList.remove("hidden"); return; }
 
-  const rows = [];
-  $all("#new-vendor-rows [data-vendor-row]").forEach((rowEl) => {
-    const idx = rowEl.dataset.vendorRow;
-    const label = rowEl.querySelector(`[data-vrow-label="${idx}"]`).value.trim();
-    const start = rowEl.querySelector(`[data-vrow-start="${idx}"]`).value;
-    const end = rowEl.querySelector(`[data-vrow-end="${idx}"]`).value;
-    const isBreak = rowEl.querySelector(`[data-vrow-break="${idx}"]`).checked;
-    if (!label && !start && !end) return; // fila vacía, se ignora
-    if (!label || !start || !end) { rows.push({ error: true, label: label || "(sin nombre)" }); return; }
-    if (toMinutes(end) <= toMinutes(start)) { rows.push({ error: true, label, reason: "hora" }); return; }
-    rows.push({ id: `c${idx}`, label, start, end, isBreak: isBreak || undefined });
+  // Guarda las filas del día que se está viendo ahora antes de armar todo el horario.
+  vendorDaySchedules[currentVendorDay] = serializeVendorRows();
+
+  const days = {};
+  let anyDayHasRows = false;
+  let errorMsg = null;
+  VENDOR_DAYS.some((day) => {
+    const rawRows = vendorDaySchedules[day] || [];
+    if (!rawRows.length) return false;
+    anyDayHasRows = true;
+    const parsed = [];
+    for (const r of rawRows) {
+      if (!r.label || !r.start || !r.end) {
+        errorMsg = `${DIAS_ES[day]}: "${r.label || "(sin nombre)"}" — completa nombre, hora de inicio y hora de fin (o bórrala).`;
+        return true;
+      }
+      if (toMinutes(r.end) <= toMinutes(r.start)) {
+        errorMsg = `${DIAS_ES[day]}: "${r.label}" — la hora de fin debe ser después de la de inicio.`;
+        return true;
+      }
+      parsed.push({ id: `c${parsed.length}`, label: r.label, start: r.start, end: r.end, isBreak: r.isBreak || undefined });
+    }
+    const sorted = parsed.sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+    for (let i = 1; i < sorted.length; i++) {
+      if (toMinutes(sorted[i].start) < toMinutes(sorted[i - 1].end)) {
+        errorMsg = `${DIAS_ES[day]}: "${sorted[i].label}" se traslapa con "${sorted[i - 1].label}".`;
+        return true;
+      }
+    }
+    days[day] = sorted;
+    return false;
   });
 
-  const badRow = rows.find((r) => r.error);
-  if (badRow) {
-    errEl.textContent = badRow.reason === "hora"
-      ? `"${badRow.label}" — la hora de fin debe ser después de la de inicio.`
-      : `"${badRow.label}" — completa nombre, hora de inicio y hora de fin (o bórrala).`;
-    errEl.classList.remove("hidden");
-    return;
-  }
-  if (!rows.length) { errEl.textContent = "Agrega al menos una actividad."; errEl.classList.remove("hidden"); return; }
-
-  const sorted = [...rows].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
-  for (let i = 1; i < sorted.length; i++) {
-    if (toMinutes(sorted[i].start) < toMinutes(sorted[i - 1].end)) {
-      errEl.textContent = `"${sorted[i].label}" se traslapa con "${sorted[i - 1].label}".`;
-      errEl.classList.remove("hidden");
-      return;
-    }
-  }
+  if (errorMsg) { errEl.textContent = errorMsg; errEl.classList.remove("hidden"); return; }
+  if (!anyDayHasRows) { errEl.textContent = "Agrega al menos una actividad en algún día."; errEl.classList.remove("hidden"); return; }
 
   const saveBtn = $("#btn-new-vendor-save");
   saveBtn.disabled = true;
   saveBtn.textContent = "Creando…";
   try {
-    await createVendorAccount({ name, email, password, customSchedule: { weekday: sorted, friday: null } });
+    await createVendorAccount({ name, email, password, customSchedule: { days } });
     $("#modal-new-vendor").classList.add("hidden");
     $("#vendor-created-email").textContent = email;
     $("#vendor-created-password").textContent = password;
@@ -1596,7 +1702,7 @@ async function renderStatsTab() {
   for (let i = 0; i < 14; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    const { type } = getBlocksForDate(d);
+    const { type } = getBlocksForDate(d, currentUserProfile);
     if (type === "weekend") continue;
     days.push({ date: d });
   }

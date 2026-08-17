@@ -150,10 +150,11 @@ Cómo creas una cuenta de vendedor (tú, desde la app):
 
 1. Entra con tu cuenta de gerente → pestaña **Equipo** → **"+ Nuevo vendedor"**.
 2. Pon su nombre, correo y una contraseña temporal.
-3. En "Actividades" arma su horario: nombre de la actividad, hora de inicio,
-   hora de fin, y marca "Descanso" si es su comida. Agrega o borra filas con
-   los botones de "+ Agregar actividad" / "✕". Este horario aplica de lunes
-   a viernes.
+3. En "Actividades por día" verás pestañas Lun/Mar/Mié/Jue/Vie/Sáb — arma las
+   actividades de cada día por separado (nombre, hora de inicio, hora de fin,
+   y "Descanso" si es su comida). Si dos días se repiten, usa "Copiar aquí"
+   en vez de volver a escribir todo. Un día sin actividades queda libre ese
+   día (el sábado, por ejemplo, empieza vacío — solo se activa si le pones algo).
 4. Toca **"Crear vendedor"** — te muestro el correo y la contraseña para que
    se los compartas. Ese vendedor ya puede entrar a la app y ver su rutina,
    puntos, racha, leads, bloqueos y prioridades, con el horario que le armaste.

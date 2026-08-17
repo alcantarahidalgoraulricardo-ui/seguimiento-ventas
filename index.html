@@ -521,8 +521,21 @@
       </div>
 
       <div>
-        <div class="flex items-center justify-between mb-2">
-          <label class="text-xs text-gray-400">Actividades (de lunes a viernes)</label>
+        <label class="text-xs text-gray-400">Actividades por día</label>
+        <div id="new-vendor-day-tabs" class="flex gap-1 bg-gray-800 rounded-xl p-1 mt-1">
+          <button type="button" data-vendor-day-tab="1" class="flex-1 rounded-lg py-1.5 text-xs font-medium transition">Lun</button>
+          <button type="button" data-vendor-day-tab="2" class="flex-1 rounded-lg py-1.5 text-xs font-medium transition">Mar</button>
+          <button type="button" data-vendor-day-tab="3" class="flex-1 rounded-lg py-1.5 text-xs font-medium transition">Mié</button>
+          <button type="button" data-vendor-day-tab="4" class="flex-1 rounded-lg py-1.5 text-xs font-medium transition">Jue</button>
+          <button type="button" data-vendor-day-tab="5" class="flex-1 rounded-lg py-1.5 text-xs font-medium transition">Vie</button>
+          <button type="button" data-vendor-day-tab="6" class="flex-1 rounded-lg py-1.5 text-xs font-medium transition">Sáb</button>
+        </div>
+        <div class="flex items-center gap-2 mt-2">
+          <select id="new-vendor-copy-from" class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-600"></select>
+          <button id="btn-new-vendor-copy" type="button" class="text-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 shrink-0">Copiar aquí</button>
+        </div>
+        <div class="flex items-center justify-between mt-3 mb-2">
+          <p id="new-vendor-day-label" class="text-xs text-gray-500">Actividades del lunes</p>
           <button id="btn-new-vendor-add-row" type="button" class="text-xs text-blue-400">+ Agregar actividad</button>
         </div>
         <div id="new-vendor-rows" class="space-y-2"></div>
