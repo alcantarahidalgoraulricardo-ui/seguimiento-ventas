@@ -1624,7 +1624,7 @@ $("#btn-new-vendor-save").addEventListener("click", async () => {
         errorMsg = `${DIAS_ES[day]}: "${r.label}" — la hora de fin debe ser después de la de inicio.`;
         return true;
       }
-      parsed.push({ id: `c${parsed.length}`, label: r.label, start: r.start, end: r.end, isBreak: r.isBreak || undefined });
+      parsed.push({ id: `c${parsed.length}`, label: r.label, start: r.start, end: r.end, isBreak: !!r.isBreak });
     }
     const sorted = parsed.sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
     for (let i = 1; i < sorted.length; i++) {
