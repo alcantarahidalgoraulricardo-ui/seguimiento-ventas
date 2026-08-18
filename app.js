@@ -1376,10 +1376,15 @@ async function renderEquipoTab() {
         </div>
         <span class="text-xs text-gray-400 w-10 text-right">${pct}%</span>
         <span class="text-xs text-blue-400 w-12 text-right">${r.points} pts</span>
+        <button data-edit-vendor="1" type="button" class="text-gray-400 text-sm px-1" title="Editar horario">✎</button>
         <span class="text-gray-600 text-xs">›</span>
       </div>
     `;
     row.addEventListener("click", () => openTeamMemberDetail(r.member));
+    row.querySelector("[data-edit-vendor]").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openNewVendorModal(r.member);
+    });
     listEl.appendChild(row);
   });
 }
@@ -1503,14 +1508,47 @@ $("#btn-new-vendor-copy").addEventListener("click", () => {
   showToast(`Copiado de ${DIAS_ES[from]}`);
 });
 
-function openNewVendorModal() {
-  $("#new-vendor-name").value = "";
-  $("#new-vendor-email").value = "";
+// Convierte el horario actual de un vendedor (nuevo formato por día, formato viejo
+// {weekday, friday}, o solo una plantilla) al formato de edición { 1: [...], ..., 6: [...] }
+// para poder precargarlo en el constructor de horarios y corregirlo desde la app.
+function scheduleToDaysShape(member) {
+  const cloneRows = (rows) => (rows || []).map((b) => ({ label: b.label, start: b.start, end: b.end, isBreak: !!b.isBreak }));
+  const custom = member && member.customSchedule;
+  if (custom && custom.days) {
+    const out = {};
+    VENDOR_DAYS.forEach((d) => { out[d] = cloneRows(custom.days[d]); });
+    return out;
+  }
+  if (custom && Array.isArray(custom.weekday) && custom.weekday.length) {
+    const wd = cloneRows(custom.weekday);
+    const fr = cloneRows(custom.friday || custom.weekday);
+    return { 1: cloneRows(wd), 2: cloneRows(wd), 3: cloneRows(wd), 4: cloneRows(wd), 5: fr, 6: [] };
+  }
+  // Sin horario personalizado todavía: parte de la plantilla que tenga asignada como base.
+  const sid = (member && member.scheduleId) || "vendedor_a";
+  const template = SCHEDULE_TEMPLATES[sid] || SCHEDULE_TEMPLATES.vendedor_a;
+  const wd = cloneRows(template.weekday);
+  const fr = cloneRows(template.friday || template.weekday);
+  return { 1: cloneRows(wd), 2: cloneRows(wd), 3: cloneRows(wd), 4: cloneRows(wd), 5: fr, 6: [] };
+}
+
+let editingVendor = null; // { uid, name, email } cuando el modal está en modo edición
+
+function openNewVendorModal(member) {
+  editingVendor = member || null;
+  $("#new-vendor-name").value = member ? (member.name || "") : "";
+  $("#new-vendor-email").value = member ? (member.email || "") : "";
+  $("#new-vendor-email").disabled = !!member;
   $("#new-vendor-password").value = "";
+  $("#new-vendor-password-wrap").classList.toggle("hidden", !!member);
   $("#new-vendor-error").classList.add("hidden");
-  // Arranca con un punto de partida en lunes; los demás días quedan vacíos hasta
-  // que el gerente los arme (o los copie de otro día).
-  vendorDaySchedules = {
+  $("#modal-new-vendor-title").textContent = member ? `Editar horario · ${member.name || "Vendedor"}` : "Nuevo vendedor";
+  $("#modal-new-vendor-subtitle").textContent = member
+    ? "Ajusta sus actividades por día y guarda — no se toca su correo ni su contraseña."
+    : "Creas su cuenta y le armas su horario aquí mismo. Luego le compartes el correo y la contraseña para que entre.";
+  $("#btn-new-vendor-save").textContent = member ? "Guardar cambios" : "Crear vendedor";
+
+  vendorDaySchedules = member ? scheduleToDaysShape(member) : {
     1: [{ label: "Pendientes CRM", start: "10:00", end: "11:00" }, { label: "Comida", start: "14:00", end: "15:00", isBreak: true }],
     2: [], 3: [], 4: [], 5: [], 6: [],
   };
@@ -1527,7 +1565,7 @@ function openNewVendorModal() {
   $("#modal-new-vendor").classList.remove("hidden");
 }
 
-$("#btn-new-vendor").addEventListener("click", openNewVendorModal);
+$("#btn-new-vendor").addEventListener("click", () => openNewVendorModal(null));
 $("#btn-new-vendor-add-row").addEventListener("click", () => addNewVendorRow({}));
 $("#btn-new-vendor-cancel").addEventListener("click", () => $("#modal-new-vendor").classList.add("hidden"));
 
@@ -1547,6 +1585,13 @@ async function createVendorAccount({ name, email, password, customSchedule }) {
   return uid;
 }
 
+// Actualiza el perfil de un vendedor YA existente (nombre + horario) sin tocar su
+// cuenta de acceso (correo/contraseña) — lo usa el botón ✎ de la pestaña Equipo.
+async function updateVendorSchedule(uid, { name, customSchedule }) {
+  await userDocRef(uid).set({ name, role: "vendedor", scheduleId: "custom", customSchedule }, { merge: true });
+  await teamMemberRef(uid).set({ name, role: "vendedor", scheduleId: "custom", customSchedule }, { merge: true });
+}
+
 $("#btn-new-vendor-save").addEventListener("click", async () => {
   const errEl = $("#new-vendor-error");
   errEl.classList.add("hidden");
@@ -1554,8 +1599,10 @@ $("#btn-new-vendor-save").addEventListener("click", async () => {
   const email = $("#new-vendor-email").value.trim();
   const password = $("#new-vendor-password").value;
   if (!name) { errEl.textContent = "Escribe el nombre del vendedor."; errEl.classList.remove("hidden"); return; }
-  if (!email) { errEl.textContent = "Escribe el correo del vendedor."; errEl.classList.remove("hidden"); return; }
-  if (!password || password.length < 6) { errEl.textContent = "La contraseña debe tener al menos 6 caracteres."; errEl.classList.remove("hidden"); return; }
+  if (!editingVendor) {
+    if (!email) { errEl.textContent = "Escribe el correo del vendedor."; errEl.classList.remove("hidden"); return; }
+    if (!password || password.length < 6) { errEl.textContent = "La contraseña debe tener al menos 6 caracteres."; errEl.classList.remove("hidden"); return; }
+  }
 
   // Guarda las filas del día que se está viendo ahora antes de armar todo el horario.
   vendorDaySchedules[currentVendorDay] = serializeVendorRows();
@@ -1595,13 +1642,19 @@ $("#btn-new-vendor-save").addEventListener("click", async () => {
 
   const saveBtn = $("#btn-new-vendor-save");
   saveBtn.disabled = true;
-  saveBtn.textContent = "Creando…";
+  saveBtn.textContent = editingVendor ? "Guardando…" : "Creando…";
   try {
-    await createVendorAccount({ name, email, password, customSchedule: { days } });
-    $("#modal-new-vendor").classList.add("hidden");
-    $("#vendor-created-email").textContent = email;
-    $("#vendor-created-password").textContent = password;
-    $("#modal-vendor-created").classList.remove("hidden");
+    if (editingVendor) {
+      await updateVendorSchedule(editingVendor.uid, { name, customSchedule: { days } });
+      $("#modal-new-vendor").classList.add("hidden");
+      showToast("Horario actualizado");
+    } else {
+      await createVendorAccount({ name, email, password, customSchedule: { days } });
+      $("#modal-new-vendor").classList.add("hidden");
+      $("#vendor-created-email").textContent = email;
+      $("#vendor-created-password").textContent = password;
+      $("#modal-vendor-created").classList.remove("hidden");
+    }
     renderEquipoTab();
   } catch (e) {
     const map = {
@@ -1609,11 +1662,11 @@ $("#btn-new-vendor-save").addEventListener("click", async () => {
       "auth/invalid-email": "Correo inválido.",
       "auth/weak-password": "La contraseña es muy débil (mínimo 6 caracteres).",
     };
-    errEl.textContent = map[e.code] || ("Error al crear la cuenta: " + e.message);
+    errEl.textContent = map[e.code] || ("Error al guardar: " + e.message);
     errEl.classList.remove("hidden");
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = "Crear vendedor";
+    saveBtn.textContent = editingVendor ? "Guardar cambios" : "Crear vendedor";
   }
 });
 

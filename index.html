@@ -502,8 +502,8 @@
   <!-- Modal: crear vendedor con su propio horario (solo gerente) -->
   <div id="modal-new-vendor" class="hidden fixed inset-0 bg-black/70 z-30 flex items-end sm:items-center justify-center p-0 sm:p-6">
     <div class="bg-gray-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 fade-in max-h-[85vh] overflow-y-auto">
-      <h3 class="font-semibold">Nuevo vendedor</h3>
-      <p class="text-xs text-gray-500">Creas su cuenta y le armas su horario aquí mismo. Luego le compartes el correo y la contraseña para que entre.</p>
+      <h3 id="modal-new-vendor-title" class="font-semibold">Nuevo vendedor</h3>
+      <p id="modal-new-vendor-subtitle" class="text-xs text-gray-500">Creas su cuenta y le armas su horario aquí mismo. Luego le compartes el correo y la contraseña para que entre.</p>
       <div>
         <label class="text-xs text-gray-400">Nombre</label>
         <input id="new-vendor-name" type="text" placeholder="Ej. Juan Pérez"
@@ -512,9 +512,9 @@
       <div>
         <label class="text-xs text-gray-400">Correo</label>
         <input id="new-vendor-email" type="email" placeholder="vendedor@parsonscnc.com"
-          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />
+          class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600 disabled:opacity-50" />
       </div>
-      <div>
+      <div id="new-vendor-password-wrap">
         <label class="text-xs text-gray-400">Contraseña temporal (mínimo 6 caracteres)</label>
         <input id="new-vendor-password" type="text" placeholder="Ej. parsons2026"
           class="w-full mt-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-600" />

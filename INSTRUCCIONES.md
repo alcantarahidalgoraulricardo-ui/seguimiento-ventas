@@ -169,6 +169,9 @@ Cómo ves a tu equipo:
 - En la pestaña **Equipo** ves la lista de tus vendedores, su % de
   cumplimiento del día y sus puntos. Toca a cualquiera para ver el detalle
   bloque por bloque de su día de hoy.
+- Toca el ícono **✎** junto a un vendedor para corregir su horario (nombre y
+  actividades por día) sin tocar su correo ni su contraseña — útil si el
+  horario quedó mal armado o si necesitas cambiarlo más adelante.
 - Puedes **ver** los datos de tus vendedores y **crear/editar su perfil y
   horario**, pero no puedes editar lo que marcan día a día — eso lo controla
   cada quien desde su cuenta.
